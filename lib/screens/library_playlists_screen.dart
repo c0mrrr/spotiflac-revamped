@@ -54,8 +54,8 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
                 return FlexibleSpaceBar(
                   expandedTitleScale: 1.0,
                   titlePadding: EdgeInsets.only(left: leftPadding, bottom: 16),
-                  title: Text(
-                    context.l10n.collectionPlaylists,
+                  title: const Text(
+                    'Playlists',
                     style: TextStyle(
                       fontSize: 20 + (8 * expandRatio),
                       fontWeight: FontWeight.bold,

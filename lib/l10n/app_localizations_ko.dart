@@ -24,9 +24,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navStore => '레포';
 
   @override
-@override
-  String get homeTitle => 'Home';
+  String get navLogs => 'Logs';
 
+  @override
+  String get homeTitle => '홈';
 
   @override
   String get homeSubtitle => '지원되는 URL을 붙여넣거나, 이름으로 검색하세요';
@@ -4425,26 +4426,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get nowPlayingOpenInExternalPlayer => '외부 플레이어에서 열기';
 
   @override
-@override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
   String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedSyncedLyrics =>
       'Time-synced lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedWordSyncedLyrics =>
       'Word-synced lyrics copied to clipboard';
 
-@override
-  String get nowPlayingTabPlayer => 'Player';
-
+  @override
+  String get nowPlayingTabPlayer => '플레이어';
 
   @override
   String get nowPlayingTabLyrics => '가사';

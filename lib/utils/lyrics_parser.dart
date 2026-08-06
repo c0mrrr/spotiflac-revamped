@@ -283,7 +283,7 @@ class LyricsParser {
             final sBegin = _parseClock(span.getAttribute('begin'));
             final spanText = span.innerText;
             if (sBegin != null && spanText.trim().isNotEmpty) {
-              words.add(LyricWord(time: sBegin, text: '$spanText '));
+              words.add(LyricWord(time: sBegin, text: spanText));
             }
           }
         }

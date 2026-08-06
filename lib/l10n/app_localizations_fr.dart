@@ -4666,26 +4666,27 @@ class AppLocalizationsFr extends AppLocalizations {
   String get nowPlayingOpenInExternalPlayer => 'Ouvrir dans un lecteur externe';
 
   @override
-@override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
   String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedSyncedLyrics =>
       'Time-synced lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedWordSyncedLyrics =>
       'Word-synced lyrics copied to clipboard';
 
-@override
-  String get nowPlayingTabPlayer => 'Player';
-
+  @override
+  String get nowPlayingTabPlayer => 'Lecteur';
 
   @override
   String get nowPlayingTabLyrics => 'Paroles';

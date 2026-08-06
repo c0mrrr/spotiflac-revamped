@@ -874,19 +874,26 @@ class _SyncedLyricsView extends ConsumerStatefulWidget {
 
 class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
   final ScrollController _scroll = ScrollController();
+  final Map<int, GlobalKey> _lineKeys = {};
+  final ValueNotifier<Duration> _posNotifier = ValueNotifier(Duration.zero);
   StreamSubscription<Duration>? _positionSub;
-  Duration _currentPosition = Duration.zero;
   int _active = -1;
   bool _userScrolling = false;
-  static const double _estimatedLyricExtent = 64;
+  Timer? _userScrollTimer;
 
   @override
   void initState() {
     super.initState();
     _positionSub = AudioService.position.listen((pos) {
-      if (mounted && _currentPosition != pos) {
+      if (!mounted) return;
+      _posNotifier.value = pos;
+      final newActive = LyricsParser.activeIndex(widget.lyrics.lines, pos);
+      if (newActive != _active) {
         setState(() {
-          _currentPosition = pos;
+          _active = newActive;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _maybeAutoScroll(newActive);
         });
       }
     });
@@ -895,24 +902,53 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
   @override
   void dispose() {
     _positionSub?.cancel();
+    _userScrollTimer?.cancel();
+    _posNotifier.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  GlobalKey _keyForIndex(int index) {
+    return _lineKeys.putIfAbsent(index, () => GlobalKey());
+  }
 
   void _maybeAutoScroll(int index) {
     if (_userScrolling || index < 0 || !_scroll.hasClients) return;
+
+    final key = _lineKeys[index];
+    final keyContext = key?.currentContext;
+
+    double targetOffset;
+    if (keyContext != null) {
+      final box = keyContext.findRenderObject() as RenderBox?;
+      final scrollBox =
+          _scroll.position.context.notificationContext?.findRenderObject()
+              as RenderBox?;
+      if (box != null && box.hasSize && scrollBox != null && scrollBox.hasSize) {
+        final positionInViewport = box.localToGlobal(
+          Offset.zero,
+          ancestor: scrollBox,
+        );
+        final currentScrollOffset = _scroll.offset;
+        final viewportHeight = scrollBox.size.height;
+        // Position active line at ~30% from the top of the viewport
+        targetOffset =
+            currentScrollOffset + positionInViewport.dy - (viewportHeight * 0.3);
+      } else {
+        targetOffset = index * 64.0;
+      }
+    } else {
+      targetOffset = index * 64.0;
+    }
+
     final position = _scroll.position;
-    final target =
-        (index * _estimatedLyricExtent) -
-        (position.viewportDimension * 0.35) +
-        24;
-    final clamped = target.clamp(
+    final clamped = targetOffset.clamp(
       position.minScrollExtent,
       position.maxScrollExtent,
     );
+
     _scroll.animateTo(
-      clamped.toDouble(),
+      clamped,
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeOutCubic,
     );
@@ -921,90 +957,145 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
   @override
   Widget build(BuildContext context) {
     final lines = widget.lyrics.lines;
-    final active = LyricsParser.activeIndex(lines, _currentPosition);
-
-    if (active != _active) {
-      _active = active;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _maybeAutoScroll(active);
-      });
-    }
 
     return NotificationListener<UserScrollNotification>(
       onNotification: (notification) {
         if (notification.direction != ScrollDirection.idle) {
           _userScrolling = true;
-          Future.delayed(const Duration(seconds: 4), () {
+          _userScrollTimer?.cancel();
+          _userScrollTimer = Timer(const Duration(seconds: 5), () {
             if (mounted) _userScrolling = false;
           });
         }
         return false;
       },
-      child: ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 80),
-        itemCount: lines.length,
-        itemBuilder: (context, index) {
-          final line = lines[index];
-          final isActive = index == active;
-          final isPast = index < active;
+      child: ShaderMask(
+        shaderCallback: (rect) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black,
+              Colors.black,
+              Colors.transparent,
+            ],
+            stops: [0.0, 0.12, 0.88, 1.0],
+          ).createShader(rect);
+        },
+        blendMode: BlendMode.dstIn,
+        child: ListView.builder(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(28, 40, 28, 120),
+          itemCount: lines.length,
+          itemBuilder: (context, index) {
+            final line = lines[index];
+            final isActive = index == _active;
+            final distance = (index - _active).abs();
 
-          final color = isActive
-              ? widget.colorScheme.onSurface
-              : isPast
-              ? widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
-              : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+            // Depth of field blur & opacity calculation based on distance
+            double blurSigma = 0.0;
+            double opacity = 1.0;
 
-          final text = line.text.trim().isEmpty
-              ? '\u00b7\u00b7\u00b7'
-              : line.text;
+            if (!isActive) {
+              if (distance == 1) {
+                blurSigma = 0.8;
+                opacity = 0.55;
+              } else if (distance == 2) {
+                blurSigma = 1.8;
+                opacity = 0.40;
+              } else {
+                blurSigma = 2.8;
+                opacity = 0.28;
+              }
+            }
 
-          Widget content;
-          if (isActive && line.hasWordTiming) {
-            content = _wordHighlightedLine(line, _currentPosition);
-          } else {
-            content = Text(
-              text,
-              textAlign: TextAlign.center,
-              style:
-                  (isActive
-                          ? Theme.of(context).textTheme.headlineMedium
-                          : Theme.of(context).textTheme.headlineSmall)
-                      ?.copyWith(
-                        height: 1.4,
-                        fontWeight: isActive
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: color,
-                      ),
-            );
-          }
+            final isDots = line.text.trim().isEmpty;
+            final displayText = isDots ? '\u00b7 \u00b7 \u00b7' : line.text;
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: GestureDetector(
-              onTap: () =>
-                  ref.read(musicPlayerControllerProvider).seek(line.time),
-              child: AnimatedScale(
-                scale: isActive ? 1.05 : 1.0,
-                alignment: Alignment.center,
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOutCubic,
-                child: AnimatedOpacity(
-                  opacity: isActive ? 1.0 : (isPast ? 0.6 : 0.8),
-                  duration: const Duration(milliseconds: 400),
-                  child: content,
+            final baseStyle = Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  height: 1.4,
+                  fontSize: isDots ? 20 : 26,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                ) ??
+                const TextStyle(fontSize: 26, fontWeight: FontWeight.w700);
+
+            final activeColor = widget.colorScheme.onSurface;
+            final inactiveColor =
+                widget.colorScheme.onSurface.withValues(alpha: 0.35);
+
+            Widget content;
+            if (isActive && line.hasWordTiming && !isDots) {
+              content = ValueListenableBuilder<Duration>(
+                valueListenable: _posNotifier,
+                builder: (context, currentPos, _) {
+                  return _wordHighlightedLine(
+                    line,
+                    currentPos,
+                    baseStyle,
+                    activeColor,
+                    inactiveColor,
+                  );
+                },
+              );
+            } else {
+              content = Text(
+                displayText,
+                textAlign: TextAlign.start,
+                style: baseStyle.copyWith(
+                  color: isActive ? activeColor : inactiveColor,
+                ),
+              );
+            }
+
+            Widget itemWidget = RepaintBoundary(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      ref.read(musicPlayerControllerProvider).seek(line.time),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedOpacity(
+                      opacity: opacity,
+                      duration: const Duration(milliseconds: 300),
+                      child: blurSigma > 0
+                          ? ImageFiltered(
+                              imageFilter: dart_ui.ImageFilter.blur(
+                                sigmaX: blurSigma,
+                                sigmaY: blurSigma,
+                              ),
+                              child: content,
+                            )
+                          : content,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+
+            return KeyedSubtree(
+              key: _keyForIndex(index),
+              child: itemWidget,
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _wordHighlightedLine(LyricLine line, Duration position) {
+  Widget _wordHighlightedLine(
+    LyricLine line,
+    Duration position,
+    TextStyle baseStyle,
+    Color activeColor,
+    Color inactiveColor,
+  ) {
     final words = <Widget>[];
+    final posMs = position.inMilliseconds;
+
     for (int i = 0; i < line.words.length; i++) {
       final word = line.words[i];
       final nextTime = i + 1 < line.words.length
@@ -1013,45 +1104,67 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
 
       final wordMs = word.time.inMilliseconds;
       final nextMs = nextTime.inMilliseconds;
-      final posMs = position.inMilliseconds;
 
       double progress = 0.0;
       if (posMs >= wordMs) {
         if (posMs >= nextMs) {
           progress = 1.0;
-        } else {
+        } else if (nextMs > wordMs) {
           progress = (posMs - wordMs) / (nextMs - wordMs);
+        } else {
+          progress = 1.0;
         }
       }
+      progress = progress.clamp(0.0, 1.0);
 
-      final isActiveWord = progress > 0.0 && progress < 1.0;
-      final isPastWord = progress >= 1.0;
+      final wordText = word.text;
 
-      final color = isActiveWord
-          ? widget.colorScheme.onSurface
-          : isPastWord
-              ? widget.colorScheme.onSurface.withValues(alpha: 0.8)
-              : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
-
-      words.add(
-        AnimatedScale(
-          scale: isActiveWord ? 1.08 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 200),
-            style: Theme.of(context).textTheme.headlineMedium!.copyWith(
-                  height: 1.4,
-                  fontWeight: isActiveWord ? FontWeight.w900 : FontWeight.w800,
-                  color: color,
-                ),
-            child: Text(word.text + (i == line.words.length - 1 ? '' : ' ')),
+      if (progress >= 1.0) {
+        // Fully active word
+        words.add(
+          Text(
+            wordText,
+            style: baseStyle.copyWith(color: activeColor),
           ),
-        ),
-      );
+        );
+      } else if (progress <= 0.0) {
+        // Future word
+        words.add(
+          Text(
+            wordText,
+            style: baseStyle.copyWith(color: inactiveColor),
+          ),
+        );
+      } else {
+        // Smoothly filling word via ShaderMask
+        words.add(
+          ShaderMask(
+            shaderCallback: (bounds) {
+              final p1 = (progress - 0.08).clamp(0.0, 1.0);
+              final p2 = (progress + 0.08).clamp(0.0, 1.0);
+              return LinearGradient(
+                colors: [
+                  activeColor,
+                  activeColor,
+                  inactiveColor,
+                  inactiveColor,
+                ],
+                stops: [0.0, p1, p2, 1.0],
+              ).createShader(bounds);
+            },
+            blendMode: BlendMode.srcIn,
+            child: Text(
+              wordText,
+              style: baseStyle.copyWith(color: Colors.white),
+            ),
+          ),
+        );
+      }
     }
+
     return Wrap(
-      alignment: WrapAlignment.center,
+      alignment: WrapAlignment.start,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: words,
     );
   }

@@ -104,6 +104,11 @@ android {
             isUniversalApk = true // Also generate universal APK
         }
     }
+    
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 
 flutter {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:spotiflac_android/theme/app_tokens.dart';
 import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 
 /// The collapsing header used by every top-level tab and every settings-style
 /// sub-page.
@@ -54,7 +55,7 @@ class AppSliverHeader extends StatelessWidget {
       collapsedHeight: kToolbarHeight,
       floating: false,
       pinned: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: false,
       leading: _showLeading
@@ -66,42 +67,48 @@ class AppSliverHeader extends StatelessWidget {
                 )
           : null,
       actions: actions,
-      flexibleSpace: LayoutBuilder(
-        builder: (context, constraints) {
-          final expandRatio =
-              ((constraints.maxHeight - minHeight) / (maxHeight - minHeight))
-                  .clamp(0.0, 1.0);
-          final leftPadding = _showLeading
-              ? _leadingClearance -
-                    ((_leadingClearance - _contentMargin) * expandRatio)
-              : _contentMargin;
-          final fontSize =
-              tokens.headerCollapsedTitleSize +
-              (tokens.headerExpandedTitleSize -
-                      tokens.headerCollapsedTitleSize) *
-                  expandRatio;
+      flexibleSpace: Stack(
+        fit: StackFit.expand,
+        children: [
+          const FrostedGlassBackground(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final expandRatio =
+                  ((constraints.maxHeight - minHeight) / (maxHeight - minHeight))
+                      .clamp(0.0, 1.0);
+              final leftPadding = _showLeading
+                  ? _leadingClearance -
+                        ((_leadingClearance - _contentMargin) * expandRatio)
+                  : _contentMargin;
+              final fontSize =
+                  tokens.headerCollapsedTitleSize +
+                  (tokens.headerExpandedTitleSize -
+                          tokens.headerCollapsedTitleSize) *
+                      expandRatio;
 
-          return FlexibleSpaceBar(
-            expandedTitleScale: 1.0,
-            titlePadding: EdgeInsets.only(
-              left: leftPadding,
-              right: tokens.gapLg,
-              bottom: tokens.gapLg,
-            ),
-            title: Text(
-              title,
-              // The title grows as the header expands; without a cap a long
-              // localized title overflowed instead of ellipsizing.
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          );
-        },
+              return FlexibleSpaceBar(
+                expandedTitleScale: 1.0,
+                titlePadding: EdgeInsets.only(
+                  left: leftPadding,
+                  right: tokens.gapLg,
+                  bottom: tokens.gapLg,
+                ),
+                title: Text(
+                  title,
+                  // The title grows as the header expands; without a cap a long
+                  // localized title overflowed instead of ellipsizing.
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

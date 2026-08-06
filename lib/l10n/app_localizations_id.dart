@@ -113,13 +113,14 @@ class AppLocalizationsId extends AppLocalizations {
       'Gunakan warna dari wallpaper Anda';
 
   @override
-@override
+  String get appearanceArtworkBackground => 'Animated Artwork Background';
+
+  @override
   String get appearanceArtworkBackgroundSubtitle =>
       'Smoothly animate blurry metadata song image colors';
 
-@override
-  String get appearanceHistoryView => 'Tampilan Riwayat';
-
+  @override
+  String get appearanceHistoryView => 'Gaya Tampilan Histori';
 
   @override
   String get appearanceHistoryViewList => 'Daftar';
@@ -4549,26 +4550,27 @@ class AppLocalizationsId extends AppLocalizations {
   String get nowPlayingOpenInExternalPlayer => 'Open in external player';
 
   @override
-@override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
   String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
 
-@override
+  @override
   String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedSyncedLyrics =>
       'Time-synced lyrics copied to clipboard';
 
-@override
+  @override
   String get nowPlayingCopiedWordSyncedLyrics =>
       'Word-synced lyrics copied to clipboard';
 
-@override
-  String get nowPlayingTabPlayer => 'Pemutar';
-
+  @override
+  String get nowPlayingTabPlayer => 'Player';
 
   @override
   String get nowPlayingTabLyrics => 'Lyrics';
