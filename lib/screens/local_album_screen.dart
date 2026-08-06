@@ -1,34 +1,42 @@
-import 'dart:ui' as dart_ui;
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
-import 'package:flutter/services.dart';
+import 'package:spotiflac_android/theme/cover_palette.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
-import 'package:spotiflac_android/utils/audio_conversion_utils.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
+import 'package:spotiflac_android/utils/audio_quality_badge_policy.dart';
+import 'package:spotiflac_android/utils/confirm_and_delete_tracks.dart';
+import 'package:spotiflac_android/utils/ffmpeg_reenrich.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/utils/image_cache_utils.dart';
 import 'package:spotiflac_android/utils/lyrics_metadata_helper.dart';
 import 'package:spotiflac_android/utils/nav_bar_inset.dart';
+import 'package:spotiflac_android/utils/re_enrich_release_policy.dart';
 import 'package:spotiflac_android/services/library_database.dart';
-import 'package:spotiflac_android/services/ffmpeg_service.dart';
-import 'package:spotiflac_android/services/replaygain_service.dart';
+import 'package:spotiflac_android/services/batch_track_actions.dart';
+import 'package:spotiflac_android/models/unified_library_item.dart';
 import 'package:spotiflac_android/services/local_track_redownload_service.dart';
 import 'package:spotiflac_android/widgets/batch_progress_dialog.dart';
-import 'package:spotiflac_android/widgets/batch_convert_sheet.dart';
 import 'package:spotiflac_android/widgets/re_enrich_field_dialog.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/music_player_provider.dart';
+import 'package:spotiflac_android/screens/collapsing_header_scroll_mixin.dart';
+import 'package:spotiflac_android/screens/selection_mode_mixin.dart';
+import 'package:spotiflac_android/widgets/collection_scaffold.dart';
+import 'package:spotiflac_android/widgets/album_track_tile.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
+import 'package:spotiflac_android/widgets/destructive_selection_button.dart';
+import 'package:spotiflac_android/widgets/selection_action_button.dart';
+import 'package:spotiflac_android/widgets/selection_bottom_bar.dart';
+import 'package:spotiflac_android/widgets/disc_separator_chip.dart';
+import 'package:spotiflac_android/widgets/album_detail_header.dart';
 
 class LocalAlbumScreen extends ConsumerStatefulWidget {
   final String albumName;
@@ -48,11 +56,10 @@ class LocalAlbumScreen extends ConsumerStatefulWidget {
   ConsumerState<LocalAlbumScreen> createState() => _LocalAlbumScreenState();
 }
 
-class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
-  bool _isSelectionMode = false;
-  final Set<String> _selectedIds = {};
-  bool _showTitleInAppBar = false;
-  final ScrollController _scrollController = ScrollController();
+class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen>
+    with
+        SelectionModeMixin<LocalAlbumScreen>,
+        CollapsingHeaderScrollMixin<LocalAlbumScreen> {
   late List<LocalLibraryItem> _sortedTracksCache;
   late Map<int, List<LocalLibraryItem>> _discGroupsCache;
 
@@ -65,11 +72,11 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   late List<int> _sortedDiscNumbersCache;
   late bool _hasMultipleDiscsCache;
   String? _commonQualityCache;
+  String? _commonQualityModeCache;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _rebuildTrackCaches();
   }
 
@@ -80,27 +87,6 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
         oldWidget.tracks.length != widget.tracks.length) {
       _rebuildTrackCaches();
     }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    final expandedHeight = _calculateExpandedHeight(context);
-    final shouldShow =
-        _scrollController.offset > (expandedHeight - kToolbarHeight - 20);
-    if (shouldShow != _showTitleInAppBar) {
-      setState(() => _showTitleInAppBar = shouldShow);
-    }
-  }
-
-  double _calculateExpandedHeight(BuildContext context) {
-    final mediaSize = MediaQuery.sizeOf(context);
-    return (mediaSize.height * 0.6).clamp(400.0, 580.0);
   }
 
   List<LocalLibraryItem> _buildSortedTracks() {
@@ -122,7 +108,8 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     _discGroupsCache = _groupTracksByDisc(_sortedTracksCache);
     _sortedDiscNumbersCache = _discGroupsCache.keys.toList()..sort();
     _hasMultipleDiscsCache = _discGroupsCache.length > 1;
-    _commonQualityCache = _computeCommonQuality(_sortedTracksCache);
+    _commonQualityCache = null;
+    _commonQualityModeCache = null;
   }
 
   Map<int, List<LocalLibraryItem>> _groupTracksByDisc(
@@ -136,95 +123,28 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
     return discMap;
   }
 
-  void _enterSelectionMode(String itemId) {
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _isSelectionMode = true;
-      _selectedIds.add(itemId);
-    });
-  }
-
-  void _exitSelectionMode() {
-    setState(() {
-      _isSelectionMode = false;
-      _selectedIds.clear();
-    });
-  }
-
-  void _toggleSelection(String itemId) {
-    setState(() {
-      if (_selectedIds.contains(itemId)) {
-        _selectedIds.remove(itemId);
-        if (_selectedIds.isEmpty) {
-          _isSelectionMode = false;
-        }
-      } else {
-        _selectedIds.add(itemId);
-      }
-    });
-  }
-
-  void _selectAll(List<LocalLibraryItem> tracks) {
-    setState(() {
-      _selectedIds.addAll(tracks.map((e) => e.id));
-    });
-  }
-
   Future<void> _deleteSelected(List<LocalLibraryItem> currentTracks) async {
-    final count = _selectedIds.length;
-    final confirmed = await showDialog<bool>(
+    final libraryNotifier = ref.read(localLibraryProvider.notifier);
+    final tracksById = {for (final track in currentTracks) track.id: track};
+
+    final deletedCount = await confirmAndDeleteTracks(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.downloadedAlbumDeleteSelected),
-        content: Text(context.l10n.downloadedAlbumDeleteMessage(count)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.dialogCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: Text(context.l10n.dialogDelete),
-          ),
-        ],
-      ),
+      ids: selectedIds.toList(),
+      deleteItem: (id) async {
+        final item = tracksById[id];
+        if (item == null) return false;
+        if (!isCueVirtualPath(item.filePath)) {
+          final deleted = await deleteFile(item.filePath);
+          if (!deleted) return false;
+        }
+        await libraryNotifier.removeItem(id);
+        return true;
+      },
+      onExitSelectionMode: exitSelectionMode,
     );
 
-    if (confirmed == true && mounted) {
-      final libraryNotifier = ref.read(localLibraryProvider.notifier);
-      final idsToDelete = _selectedIds.toList();
-      final tracksById = {for (final track in currentTracks) track.id: track};
-
-      int deletedCount = 0;
-      for (final id in idsToDelete) {
-        final item = tracksById[id];
-        if (item != null) {
-          if (!isCueVirtualPath(item.filePath)) {
-            try {
-              await deleteFile(item.filePath);
-            } catch (_) {}
-          }
-          await libraryNotifier.removeItem(id);
-          deletedCount++;
-        }
-      }
-
-      _exitSelectionMode();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.snackbarDeletedTracks(deletedCount)),
-          ),
-        );
-
-        if (deletedCount == currentTracks.length) {
-          Navigator.pop(context);
-        }
-      }
+    if (deletedCount == currentTracks.length && mounted) {
+      Navigator.pop(context);
     }
   }
 
@@ -241,7 +161,9 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.l10n.snackbarCannotOpenFile(e.toString())),
+            content: Text(
+              context.l10n.snackbarCannotOpenFile(context.friendlyError(e)),
+            ),
           ),
         );
       }
@@ -251,371 +173,133 @@ class _LocalAlbumScreenState extends ConsumerState<LocalAlbumScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final qualityLabelMode = ref.watch(
+      settingsProvider.select((s) => s.libraryQualityLabelMode),
+    );
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final bottomInset = context.navBarBottomInset;
     final tracks = _sortedTracksCache;
 
     if (tracks.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-flexibleSpace: const FrostedGlassBackground(),
-backgroundColor: Colors.transparent,
-elevation: 0,
-title: Text(widget.albumName)),
+        appBar: AppBar(title: Text(widget.albumName)),
         body: Center(child: Text(context.l10n.noTracksFoundForAlbum)),
       );
     }
 
-    final validIds = tracks.map((t) => t.id).toSet();
-    _selectedIds.removeWhere((id) => !validIds.contains(id));
-    if (_selectedIds.isEmpty && _isSelectionMode) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _isSelectionMode = false);
-      });
-    }
+    pruneSelection(tracks.map((t) => t.id).toSet());
 
-    return PopScope(
-      canPop: !_isSelectionMode,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _isSelectionMode) {
-          _exitSelectionMode();
-        }
-      },
-      child: Scaffold(
-        body: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                _buildAppBar(context, colorScheme),
-                _buildInfoCard(context, colorScheme, tracks),
-                _buildTrackList(context, colorScheme, tracks),
-                SliverToBoxAdapter(
-                  child: SizedBox(height: _isSelectionMode ? 120 : 32),
-                ),
-                SliverToBoxAdapter(child: SizedBox(height: bottomInset)),
-              ],
-            ),
-
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              left: 0,
-              right: 0,
-              bottom: _isSelectionMode ? 0 : -(200 + bottomPadding),
-              child: _buildSelectionBottomBar(
-                context,
-                colorScheme,
-                tracks,
-                bottomPadding,
-              ),
-            ),
-          ],
-        ),
+    return CollectionScaffold(
+      scrollController: scrollController,
+      isSelectionMode: isSelectionMode,
+      onExitSelectionMode: exitSelectionMode,
+      appBar: _buildAppBar(context, colorScheme, qualityLabelMode),
+      slivers: [_buildTrackList(context, colorScheme, tracks)],
+      selectionBar: _buildSelectionBottomBar(
+        context,
+        colorScheme,
+        tracks,
+        bottomPadding,
       ),
+      bottomInset: bottomInset,
     );
   }
 
-  Widget _buildAppBar(BuildContext context, ColorScheme colorScheme) {
-    final expandedHeight = _calculateExpandedHeight(context);
-
-    return SliverAppBar(
-      expandedHeight: expandedHeight,
-      pinned: true,
-      stretch: true,
-      
-      surfaceTintColor: Colors.transparent,
-      title: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: _showTitleInAppBar ? 1.0 : 0.0,
-        child: Text(
-          widget.albumName,
-          style: TextStyle(
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-        builder: (context, constraints) {
-          final collapseRatio =
-              (constraints.maxHeight - kToolbarHeight) /
-              (expandedHeight - kToolbarHeight);
-          final showContent = collapseRatio > 0.3;
-          final cacheWidth = coverCacheWidthForViewport(context);
-
-          return FlexibleSpaceBar(
-            collapseMode: CollapseMode.pin,
-            background: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (widget.coverPath != null)
-                  ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-                    child: Image.file(
-                      File(widget.coverPath!),
-                      fit: BoxFit.cover,
-                      cacheWidth: cacheWidth,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.low,
-                      errorBuilder: (_, _, _) =>
-                          Container(color: colorScheme.surface),
-                    ),
-                  )
-                else
-                  Container(
-                    color: colorScheme.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.album,
-                      size: 80,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                if (widget.coverPath != null)
-                  Container(color: Colors.black.withValues(alpha: 0.35)),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: expandedHeight * 0.65,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.85),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 40,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 150),
-                    opacity: showContent ? 1.0 : 0.0,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Builder(
-                          builder: (context) {
-                            final coverSize = (constraints.maxWidth * 0.5)
-                                .clamp(150.0, 210.0)
-                                .toDouble();
-                            return Container(
-                              width: coverSize,
-                              height: coverSize,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.45),
-                                    blurRadius: 24,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: widget.coverPath != null
-                                    ? Image.file(
-                                        File(widget.coverPath!),
-                                        fit: BoxFit.cover,
-                                        width: coverSize,
-                                        height: coverSize,
-                                        cacheWidth: cacheWidth,
-                                        gaplessPlayback: true,
-                                        errorBuilder: (_, _, _) => Container(
-                                          color: colorScheme
-                                              .surfaceContainerHighest,
-                                          child: Icon(
-                                            Icons.album,
-                                            size: 48,
-                                            color: colorScheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      )
-                                    : Container(
-                                        color:
-                                            colorScheme.surfaceContainerHighest,
-                                        child: Icon(
-                                          Icons.album,
-                                          size: 48,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          widget.albumName,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: _albumTitleFontSize(),
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.artistName,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildLocalHeaderMeta(context),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: FilledButton.icon(
-                                onPressed: _playAll,
-                                icon: const Icon(Icons.play_arrow, size: 20),
-                                label: Text(
-                                  context.l10n.tooltipPlay,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                style: FilledButton.styleFrom(
-                                  
-                                  foregroundColor: Colors.black87,
-                                  minimumSize: const Size(0, 48),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                tooltip: context.l10n.actionShuffle,
-                                onPressed: _shuffleAll,
-                                icon: const Icon(
-                                  Icons.shuffle,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            stretchModes: const [StretchMode.zoomBackground],
-          );
-        },
-      )]),
-      leading: IconButton(
-        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-        icon: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.4),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.arrow_back, color: Colors.white),
-        ),
-        onPressed: () => Navigator.pop(context),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(
+  Widget _buildAppBar(
     BuildContext context,
     ColorScheme colorScheme,
-    List<LocalLibraryItem> tracks,
+    String qualityLabelMode,
   ) {
-    return const SliverToBoxAdapter(child: SizedBox.shrink());
-  }
+    final expandedHeight = calculateExpandedHeight(context);
 
-  double _albumTitleFontSize() {
-    final length = widget.albumName.trim().length;
-    if (length > 45) return 18;
-    if (length > 30) return 21;
-    return 24;
-  }
+    final cacheWidth = coverCacheWidthForViewport(context);
+    final Widget background = widget.coverPath != null
+        ? Image.file(
+            File(widget.coverPath!),
+            fit: BoxFit.cover,
+            cacheWidth: cacheWidth,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.low,
+            errorBuilder: (_, _, _) => Container(color: colorScheme.surface),
+          )
+        : Container(
+            color: colorScheme.surfaceContainerHighest,
+            child: Icon(
+              Icons.album,
+              size: 80,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          );
 
-  Widget _metaWhiteItem(IconData? icon, String label) {
-    const textStyle = TextStyle(
-      color: Colors.white,
-      fontSize: 13,
-      fontWeight: FontWeight.w500,
+    return AlbumDetailHeader(
+      title: widget.albumName,
+      expandedHeight: expandedHeight,
+      showTitleInAppBar: showTitleInAppBar,
+      background: background,
+      paletteSource: widget.coverPath,
+      blurAndScrimBackground: widget.coverPath != null,
+      coverBuilder: (context, coverSize) => widget.coverPath != null
+          ? Image.file(
+              File(widget.coverPath!),
+              fit: BoxFit.cover,
+              width: coverSize,
+              height: coverSize,
+              cacheWidth: cacheWidth,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => Container(
+                color: colorScheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.album,
+                  size: 48,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          : Container(
+              color: colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.album,
+                size: 48,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+      subtitle: Text(
+        widget.artistName,
+        style: TextStyle(
+          color: HeaderPalette.of(context).onSurfaceVariant,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      meta: _buildLocalHeaderMeta(context, qualityLabelMode),
+      actions: AlbumPlayActions(
+        playLabel: context.l10n.tooltipPlay,
+        shuffleTooltip: context.l10n.actionShuffle,
+        onPlay: _playAll,
+        onShuffle: _shuffleAll,
+      ),
     );
-    if (icon == null) return Text(label, style: textStyle);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 15, color: Colors.white),
-        const SizedBox(width: 4),
-        Text(label, style: textStyle),
-      ],
-    );
   }
 
-  Widget _buildLocalHeaderMeta(BuildContext context) {
+  Widget _buildLocalHeaderMeta(BuildContext context, String qualityLabelMode) {
     final tracks = _sortedTracksCache;
     final totalSeconds = tracks.fold<int>(
       0,
       (sum, t) => sum + ((t.duration ?? 0) > 0 ? t.duration! : 0),
     );
     final totalMinutes = (totalSeconds / 60).round();
+    final quality = _getCommonQuality(qualityLabelMode);
 
-    final parts = <Widget>[];
-    void add(Widget w) {
-      if (parts.isNotEmpty) {
-        parts.add(
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              '•',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-        );
-      }
-      parts.add(w);
-    }
-
-    add(_metaWhiteItem(null, context.l10n.queueTrackCount(tracks.length)));
-    if (totalMinutes > 0) add(_metaWhiteItem(null, '$totalMinutes min'));
-    final quality = _commonQualityCache;
-    if (quality != null && quality.isNotEmpty) {
-      add(_metaWhiteItem(Icons.graphic_eq, quality));
-    }
-
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      runSpacing: 4,
-      children: parts,
+    return HeaderMetaRow(
+      items: [
+        HeaderMetaItem(context.l10n.queueTrackCount(tracks.length)),
+        if (totalMinutes > 0) HeaderMetaItem('$totalMinutes min'),
+        if (quality != null && quality.isNotEmpty)
+          HeaderMetaItem(quality, icon: Icons.graphic_eq),
+      ],
     );
   }
 
@@ -635,34 +319,27 @@ title: Text(widget.albumName)),
     await _openFile(tracks[Random().nextInt(tracks.length)]);
   }
 
-  String? _computeCommonQuality(List<LocalLibraryItem> tracks) {
+  String? _getCommonQuality(String mode) {
+    if (_commonQualityModeCache == mode) return _commonQualityCache;
+    _commonQualityModeCache = mode;
+    _commonQualityCache = _computeCommonQuality(_sortedTracksCache, mode);
+    return _commonQualityCache;
+  }
+
+  String? _computeCommonQuality(List<LocalLibraryItem> tracks, String mode) {
     if (tracks.isEmpty) return null;
-    final first = tracks.first;
+    String? label(LocalLibraryItem track) => buildLibraryAudioQualityLabel(
+      mode: mode,
+      format: track.format,
+      bitrateKbps: track.bitrate,
+      bitDepth: track.bitDepth,
+      sampleRate: track.sampleRate,
+    );
 
-    if (first.bitrate != null && first.bitrate! > 0) {
-      final fmt = first.format?.toUpperCase() ?? '';
-      final firstBitrate = first.bitrate;
-      for (final track in tracks) {
-        if (track.bitrate != firstBitrate) {
-          return null;
-        }
-      }
-      return '$fmt ${firstBitrate}kbps'.trim();
-    }
-
-    if (first.bitDepth == null ||
-        first.bitDepth == 0 ||
-        first.sampleRate == null) {
-      return null;
-    }
-
-    final firstQuality =
-        '${first.bitDepth}/${(first.sampleRate! / 1000).round()}kHz';
+    final firstQuality = label(tracks.first);
+    if (firstQuality == null) return null;
     for (final track in tracks) {
-      if (track.bitDepth != first.bitDepth ||
-          track.sampleRate != first.sampleRate) {
-        return null;
-      }
+      if (label(track) != firstQuality) return null;
     }
     return firstQuality;
   }
@@ -682,51 +359,7 @@ title: Text(widget.albumName)),
 
       if (hasMultipleDiscs) {
         slivers.add(
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.album,
-                          size: 16,
-                          color: colorScheme.onSecondaryContainer,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          context.l10n.downloadedAlbumDiscHeader(discNumber),
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                color: colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          SliverToBoxAdapter(child: DiscSeparatorChip(discNumber: discNumber)),
         );
       }
 
@@ -746,7 +379,10 @@ title: Text(widget.albumName)),
       );
     }
 
-    return SliverMainAxisGroup(slivers: slivers);
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: wideListInset(context)),
+      sliver: SliverMainAxisGroup(slivers: slivers),
+    );
   }
 
   Widget _buildTrackItem(
@@ -754,236 +390,45 @@ title: Text(widget.albumName)),
     ColorScheme colorScheme,
     LocalLibraryItem track,
   ) {
-    final isSelected = _selectedIds.contains(track.id);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Card(
-        elevation: 0,
-        color: isSelected
-            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-            : Colors.transparent,
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        child: ListTile(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    return AlbumTrackTile(
+      trackNumber: track.trackNumber,
+      trackName: track.trackName,
+      subtitle: Row(
+        children: [
+          Flexible(
+            child: Text(
+              track.artistName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
           ),
-          onTap: _isSelectionMode
-              ? () => _toggleSelection(track.id)
-              : () => _openFile(track),
-          onLongPress: _isSelectionMode
-              ? null
-              : () => _enterSelectionMode(track.id),
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_isSelectionMode) ...[
-                AnimatedSelectionCheckbox(
-                  visible: true,
-                  selected: isSelected,
-                  colorScheme: colorScheme,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-              ],
-              SizedBox(
-                width: 24,
-                child: Text(
-                  track.trackNumber?.toString() ?? '-',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+          if (track.format != null) ...[
+            Text(
+              ' • ',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
               ),
-            ],
-          ),
-          title: Text(
-            track.trackName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
-          ),
-          subtitle: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  track.artistName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
+            ),
+            Text(
+              track.format!.toUpperCase(),
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
               ),
-              if (track.format != null) ...[
-                Text(
-                  ' • ',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  track.format!.toUpperCase(),
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          trailing: _isSelectionMode
-              ? null
-              : IconButton(
-                  tooltip: context.l10n.tooltipPlay,
-                  onPressed: () => _openFile(track),
-                  icon: Icon(Icons.play_arrow, color: colorScheme.primary),
-                  style: IconButton.styleFrom(
-                    backgroundColor: colorScheme.primaryContainer.withValues(
-                      alpha: 0.3,
-                    ),
-                  ),
-                ),
-        ),
+            ),
+          ],
+        ],
       ),
+      isSelectionMode: isSelectionMode,
+      isSelected: selectedIds.contains(track.id),
+      colorScheme: colorScheme,
+      onToggleSelection: () => toggleSelection(track.id),
+      onOpen: () => _openFile(track),
+      onEnterSelectionMode: () => enterSelectionMode(track.id),
+      onPlay: () => _openFile(track),
     );
-  }
-
-  bool _hasValue(String? value) => value != null && value.trim().isNotEmpty;
-
-  Future<void> _safeDeleteFile(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _cleanupTempFileAndParent(String path) async {
-    await _safeDeleteFile(path);
-    try {
-      final parent = File(path).parent;
-      if (await parent.exists()) {
-        await parent.delete();
-      }
-    } catch (_) {}
-  }
-
-  Future<bool> _applyFfmpegReEnrichResult(
-    LocalLibraryItem item,
-    Map<String, dynamic> result,
-  ) async {
-    final tempPath = result['temp_path'] as String?;
-    final safUri = result['saf_uri'] as String?;
-    final ffmpegTarget = _hasValue(tempPath) ? tempPath! : item.filePath;
-    final downloadedCoverPath = result['cover_path'] as String?;
-    String? effectiveCoverPath = downloadedCoverPath;
-    String? extractedCoverPath;
-
-    if (!_hasValue(effectiveCoverPath)) {
-      try {
-        final tempDir = await Directory.systemTemp.createTemp(
-          'reenrich_cover_',
-        );
-        final coverOutput = '${tempDir.path}${Platform.pathSeparator}cover.jpg';
-        final extracted = await PlatformBridge.extractCoverToFile(
-          ffmpegTarget,
-          coverOutput,
-        );
-        if (extracted['error'] == null) {
-          effectiveCoverPath = coverOutput;
-          extractedCoverPath = coverOutput;
-        } else {
-          try {
-            await tempDir.delete(recursive: true);
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-
-    final metadata = (result['metadata'] as Map<String, dynamic>?)?.map(
-      (k, v) => MapEntry(k, v.toString()),
-    );
-
-    final format = item.format?.toLowerCase();
-    final lowerPath = item.filePath.toLowerCase();
-    final isMp3 = format == 'mp3' || lowerPath.endsWith('.mp3');
-    final isM4A =
-        format == 'm4a' ||
-        format == 'aac' ||
-        lowerPath.endsWith('.m4a') ||
-        lowerPath.endsWith('.aac');
-    final isOpus =
-        format == 'opus' ||
-        format == 'ogg' ||
-        lowerPath.endsWith('.opus') ||
-        lowerPath.endsWith('.ogg');
-
-    final artistTagMode = ref.read(settingsProvider).artistTagMode;
-    String? ffmpegResult;
-    if (isMp3) {
-      ffmpegResult = await FFmpegService.embedMetadataToMp3(
-        mp3Path: ffmpegTarget,
-        coverPath: effectiveCoverPath,
-        metadata: metadata,
-        preserveMetadata: true,
-      );
-    } else if (isM4A) {
-      ffmpegResult = await FFmpegService.embedMetadataToM4a(
-        m4aPath: ffmpegTarget,
-        coverPath: effectiveCoverPath,
-        metadata: metadata,
-        preserveMetadata: true,
-      );
-    } else if (isOpus) {
-      ffmpegResult = await FFmpegService.embedMetadataToOpus(
-        opusPath: ffmpegTarget,
-        coverPath: effectiveCoverPath,
-        metadata: metadata,
-        artistTagMode: artistTagMode,
-        preserveMetadata: true,
-      );
-    }
-
-    if (ffmpegResult != null && _hasValue(tempPath) && _hasValue(safUri)) {
-      final ok = await PlatformBridge.writeTempToSaf(ffmpegResult, safUri!);
-      if (!ok) {
-        if (_hasValue(downloadedCoverPath)) {
-          await _safeDeleteFile(downloadedCoverPath!);
-        }
-        if (_hasValue(extractedCoverPath)) {
-          await _cleanupTempFileAndParent(extractedCoverPath!);
-        }
-        await _safeDeleteFile(tempPath!);
-        return false;
-      }
-      await writeReEnrichSafSidecarLrc(safUri: safUri, reEnrichResult: result);
-    }
-
-    if (_hasValue(downloadedCoverPath)) {
-      await _safeDeleteFile(downloadedCoverPath!);
-    }
-    if (_hasValue(extractedCoverPath)) {
-      await _cleanupTempFileAndParent(extractedCoverPath!);
-    }
-    if (_hasValue(tempPath)) {
-      await _safeDeleteFile(tempPath!);
-    }
-
-    if (ffmpegResult != null) {
-      // Filesystem .lrc sidecar. SAF sidecar is written only after
-      // writeTempToSaf succeeds.
-      await writeReEnrichSidecarLrc(
-        audioFilePath: item.filePath,
-        reEnrichResult: result,
-      );
-    }
-
-    return ffmpegResult != null;
   }
 
   Future<bool> _reEnrichLocalTrack(
@@ -1015,6 +460,9 @@ title: Text(widget.albumName)),
       'copyright': '',
       'duration_ms': durationMs,
       'search_online': true,
+      'replace_release_metadata': allowsReleaseIdentityReplacement(
+        ReEnrichOperationScope.batch,
+      ),
       // ignore: use_null_aware_elements
       if (updateFields != null) 'update_fields': updateFields,
     };
@@ -1030,7 +478,11 @@ title: Text(widget.albumName)),
       return true;
     }
     if (method == 'ffmpeg') {
-      return _applyFfmpegReEnrichResult(item, result);
+      return applyFfmpegReEnrichResult(
+        item: item,
+        result: result,
+        artistTagMode: ref.read(settingsProvider).artistTagMode,
+      );
     }
     return false;
   }
@@ -1039,7 +491,7 @@ title: Text(widget.albumName)),
     List<LocalLibraryItem> allTracks,
   ) {
     final tracksById = {for (final t in allTracks) t.id: t};
-    return _selectedIds
+    return selectedIds
         .map((id) => tracksById[id])
         .whereType<LocalLibraryItem>()
         .where(LocalTrackRedownloadService.isFlacUpgradeEligible)
@@ -1167,17 +619,14 @@ title: Text(widget.albumName)),
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(summary)));
-    setState(() {
-      _selectedIds.clear();
-      _isSelectionMode = false;
-    });
+    exitSelectionMode();
   }
 
   Future<void> _reEnrichSelected(List<LocalLibraryItem> allTracks) async {
     final tracksById = {for (final t in allTracks) t.id: t};
     final selected = <LocalLibraryItem>[];
 
-    for (final id in _selectedIds) {
+    for (final id in selectedIds) {
       final item = tracksById[id];
       if (item != null) {
         selected.add(item);
@@ -1189,7 +638,7 @@ title: Text(widget.albumName)),
     }
 
     // The bar uses AnimatedPositioned (250ms), so wait for the slide-out.
-    setState(() => _isSelectionMode = false);
+    setState(() => isSelectionMode = false);
     await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
 
@@ -1200,7 +649,7 @@ title: Text(widget.albumName)),
 
     if (selection == null || !mounted) {
       // Cancelled — restore selection mode (IDs are still intact).
-      if (mounted) setState(() => _isSelectionMode = true);
+      if (mounted) setState(() => isSelectionMode = true);
       return;
     }
 
@@ -1261,7 +710,7 @@ title: Text(widget.albumName)),
       await ref.read(localLibraryProvider.notifier).reloadFromStorage();
     }
 
-    _exitSelectionMode();
+    exitSelectionMode();
 
     if (!mounted) {
       return;
@@ -1284,475 +733,14 @@ title: Text(widget.albumName)),
     ).showSnackBar(SnackBar(content: Text(summary)));
   }
 
-  void _showBatchConvertSheet(
-    BuildContext context,
-    List<LocalLibraryItem> allTracks,
+  List<UnifiedLibraryItem> _selectedUnifiedItems(
+    List<LocalLibraryItem> tracks,
   ) {
-    final tracksById = {for (final t in allTracks) t.id: t};
-    final sourceFormats = <String>{};
-    final sourceBitDepths = <int?>[];
-    final sourceSampleRates = <int?>[];
-    for (final id in _selectedIds) {
-      final item = tracksById[id];
-      if (item == null) continue;
-      final sourceFormat = convertibleAudioSourceFormat(
-        storedFormat: item.format,
-        filePath: item.filePath,
-      );
-      if (sourceFormat != null) sourceFormats.add(sourceFormat);
-      sourceBitDepths.add(item.bitDepth);
-      sourceSampleRates.add(item.sampleRate);
-    }
-
-    final formats = audioConversionTargetFormats
-        .where(
-          (target) => sourceFormats.any(
-            (source) => canConvertAudioFormat(
-              sourceFormat: source,
-              targetFormat: target,
-            ),
-          ),
-        )
-        .toList();
-
-    if (formats.isEmpty) return;
-
-    final sheetTitle = context.l10n.selectionBatchConvertConfirmTitle;
-    final sheetConfirmLabel = context.l10n.selectionConvertCount(
-      _selectedIds.length,
-    );
-
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => BatchConvertSheet(
-        formats: formats,
-        title: sheetTitle,
-        confirmLabel: sheetConfirmLabel,
-        sourceBitDepth: lowestKnownPositiveInt(sourceBitDepths),
-        sourceSampleRate: lowestKnownPositiveInt(sourceSampleRates),
-        onConvert: (format, bitrate, losslessQuality, losslessProcessing) {
-          Navigator.pop(sheetContext);
-          _performBatchConversion(
-            allTracks: allTracks,
-            targetFormat: format,
-            bitrate: bitrate,
-            losslessQuality: losslessQuality,
-            losslessProcessing: losslessProcessing,
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _performBatchConversion({
-    required List<LocalLibraryItem> allTracks,
-    required String targetFormat,
-    required String bitrate,
-    LosslessConversionQuality losslessQuality =
-        const LosslessConversionQuality(),
-    LosslessConversionProcessing losslessProcessing =
-        const LosslessConversionProcessing(),
-  }) async {
-    final tracksById = {for (final t in allTracks) t.id: t};
-    final selected = <LocalLibraryItem>[];
-    for (final id in _selectedIds) {
-      final item = tracksById[id];
-      if (item == null) continue;
-      final currentFormat = convertibleAudioSourceFormat(
-        storedFormat: item.format,
-        filePath: item.filePath,
-      );
-      if (currentFormat == null ||
-          !canConvertAudioFormat(
-            sourceFormat: currentFormat,
-            targetFormat: targetFormat,
-          )) {
-        continue;
-      }
-      selected.add(item);
-    }
-
-    if (selected.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.selectionConvertNoConvertible)),
-        );
-      }
-      return;
-    }
-
-    final isLossless = isLosslessConversionTarget(targetFormat);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.l10n.selectionBatchConvertConfirmTitle),
-        content: Text(
-          isLossless && losslessQuality.hasCaps
-              ? context.l10n.selectionBatchConvertConfirmMessageLosslessCapped(
-                  selected.length,
-                  targetFormat,
-                  losslessQualityLabel(
-                    losslessQuality,
-                    originalLabel:
-                        context.l10n.losslessConversionLabels.original,
-                    originalQualityLabel:
-                        context.l10n.losslessConversionLabels.originalQuality,
-                  ),
-                )
-              : isLossless
-              ? context.l10n.selectionBatchConvertConfirmMessageLossless(
-                  selected.length,
-                  targetFormat,
-                )
-              : context.l10n.selectionBatchConvertConfirmMessage(
-                  selected.length,
-                  targetFormat,
-                  bitrate,
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.l10n.dialogCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.trackConvertFormat),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    int successCount = 0;
-    final total = selected.length;
-    final localDb = LibraryDatabase.instance;
-    final settings = ref.read(settingsProvider);
-    final shouldEmbedLyrics =
-        settings.embedLyrics && settings.lyricsMode != 'external';
-
-    var cancelled = false;
-    BatchProgressDialog.show(
-      context: context,
-      title: context.l10n.trackConvertConverting,
-      total: total,
-      icon: Icons.transform,
-      onCancel: () {
-        cancelled = true;
-        BatchProgressDialog.dismiss(context);
-      },
-    );
-
-    for (int i = 0; i < total; i++) {
-      if (!mounted || cancelled) break;
-      final item = selected[i];
-
-      BatchProgressDialog.update(current: i + 1, detail: item.trackName);
-
-      try {
-        final metadata = <String, String>{
-          'TITLE': item.trackName,
-          'ARTIST': item.artistName,
-          'ALBUM': item.albumName,
-        };
-        try {
-          final result = await PlatformBridge.readFileMetadata(item.filePath);
-          if (result['error'] == null) {
-            mergePlatformMetadataForTagEmbed(target: metadata, source: result);
-          }
-        } catch (_) {}
-        await ensureLyricsMetadataForConversion(
-          metadata: metadata,
-          sourcePath: item.filePath,
-          shouldEmbedLyrics: shouldEmbedLyrics,
-          trackName: item.trackName,
-          artistName: item.artistName,
-          durationMs: (item.duration ?? 0) * 1000,
-        );
-
-        String? coverPath;
-        try {
-          final tempDir = await getTemporaryDirectory();
-          final coverOutput =
-              '${tempDir.path}${Platform.pathSeparator}batch_cover_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          final coverResult = await PlatformBridge.extractCoverToFile(
-            item.filePath,
-            coverOutput,
-          );
-          if (coverResult['error'] == null) coverPath = coverOutput;
-        } catch (_) {}
-
-        final isSaf = isContentUri(item.filePath);
-        String workingPath = item.filePath;
-        String? safTempPath;
-
-        if (isSaf) {
-          safTempPath = await PlatformBridge.copyContentUriToTemp(
-            item.filePath,
-          );
-          if (safTempPath == null) continue;
-          workingPath = safTempPath;
-        }
-
-        final newPath = await FFmpegService.convertAudioFormat(
-          inputPath: workingPath,
-          targetFormat: targetFormat.toLowerCase(),
-          bitrate: bitrate,
-          metadata: metadata,
-          coverPath: coverPath,
-          artistTagMode: settings.artistTagMode,
-          deleteOriginal: !isSaf,
-          sourceBitDepth: item.bitDepth,
-          losslessQuality: losslessQuality,
-          losslessProcessing: losslessProcessing,
-        );
-
-        if (coverPath != null) {
-          try {
-            await File(coverPath).delete();
-          } catch (_) {}
-        }
-
-        if (newPath == null) {
-          if (safTempPath != null) {
-            try {
-              await File(safTempPath).delete();
-            } catch (_) {}
-          }
-          continue;
-        }
-
-        final isLosslessOutput = isLosslessConversionTarget(targetFormat);
-        int? convertedBitDepth;
-        int? convertedSampleRate;
-        if (isLosslessOutput) {
-          try {
-            final convertedMetadata = await PlatformBridge.readFileMetadata(
-              newPath,
-            );
-            if (convertedMetadata['error'] == null) {
-              convertedBitDepth = readPositiveAudioInt(
-                convertedMetadata['bit_depth'],
-              );
-              convertedSampleRate = readPositiveAudioInt(
-                convertedMetadata['sample_rate'],
-              );
-            }
-          } catch (_) {}
-          convertedBitDepth ??= losslessQuality.effectiveBitDepth(
-            item.bitDepth,
-          );
-          convertedSampleRate ??= losslessQuality.effectiveSampleRate(
-            item.sampleRate,
-          );
-        }
-
-        if (isSaf) {
-          final uri = Uri.parse(item.filePath);
-          final pathSegments = uri.pathSegments;
-
-          String? treeUri;
-          String relativeDir = '';
-          String oldFileName = '';
-
-          // Typical SAF document URI pattern:
-          // content://authority/tree/<tree-id>/document/<doc-path>
-          final treeIdx = pathSegments.indexOf('tree');
-          final docIdx = pathSegments.indexOf('document');
-          if (treeIdx >= 0 && treeIdx + 1 < pathSegments.length) {
-            final treeId = pathSegments[treeIdx + 1];
-            treeUri =
-                'content://${uri.authority}/tree/${Uri.encodeComponent(treeId)}';
-          }
-
-          if (docIdx >= 0 && docIdx + 1 < pathSegments.length) {
-            final docPath = Uri.decodeFull(pathSegments[docIdx + 1]);
-            final slashIdx = docPath.lastIndexOf('/');
-            if (slashIdx >= 0) {
-              oldFileName = docPath.substring(slashIdx + 1);
-              // Relative dir is everything after the tree id's directory base
-              final treeId = treeIdx >= 0 && treeIdx + 1 < pathSegments.length
-                  ? Uri.decodeFull(pathSegments[treeIdx + 1])
-                  : '';
-              if (treeId.isNotEmpty && docPath.startsWith(treeId)) {
-                final afterTree = docPath.substring(treeId.length);
-                final trimmed = afterTree.startsWith('/')
-                    ? afterTree.substring(1)
-                    : afterTree;
-                final lastSlash = trimmed.lastIndexOf('/');
-                relativeDir = lastSlash >= 0
-                    ? trimmed.substring(0, lastSlash)
-                    : '';
-              }
-            } else {
-              oldFileName = docPath;
-            }
-          }
-
-          if (treeUri != null && oldFileName.isNotEmpty) {
-            final dotIdx = oldFileName.lastIndexOf('.');
-            final baseName = dotIdx > 0
-                ? oldFileName.substring(0, dotIdx)
-                : oldFileName;
-            final convTarget = convertTargetExtAndMime(targetFormat);
-            final newExt = convTarget.ext;
-            final mimeType = convTarget.mime;
-            final newFileName = '$baseName$newExt';
-
-            final safUri = await PlatformBridge.createSafFileFromPath(
-              treeUri: treeUri,
-              relativeDir: relativeDir,
-              fileName: newFileName,
-              mimeType: mimeType,
-              srcPath: newPath,
-            );
-
-            if (safUri == null || safUri.isEmpty) {
-              try {
-                await File(newPath).delete();
-              } catch (_) {}
-              if (safTempPath != null) {
-                try {
-                  await File(safTempPath).delete();
-                } catch (_) {}
-              }
-              continue;
-            }
-
-            if (!isSameContentUri(item.filePath, safUri)) {
-              try {
-                await PlatformBridge.safDelete(item.filePath);
-              } catch (_) {}
-            }
-            await localDb.replaceWithConvertedItem(
-              item: item,
-              newFilePath: safUri,
-              targetFormat: targetFormat,
-              bitrate: bitrate,
-              bitDepth: convertedBitDepth,
-              sampleRate: convertedSampleRate,
-            );
-          }
-
-          try {
-            await File(newPath).delete();
-          } catch (_) {}
-          if (safTempPath != null) {
-            try {
-              await File(safTempPath).delete();
-            } catch (_) {}
-          }
-        } else {
-          await localDb.replaceWithConvertedItem(
-            item: item,
-            newFilePath: newPath,
-            targetFormat: targetFormat,
-            bitrate: bitrate,
-            bitDepth: convertedBitDepth,
-            sampleRate: convertedSampleRate,
-          );
-        }
-
-        successCount++;
-      } catch (_) {}
-    }
-
-    ref.read(localLibraryProvider.notifier).reloadFromStorage();
-    _exitSelectionMode();
-
-    if (mounted) {
-      if (!cancelled) {
-        BatchProgressDialog.dismiss(context);
-      }
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.l10n.selectionBatchConvertSuccess(
-              successCount,
-              total,
-              targetFormat,
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _runBatchReplayGain(List<LocalLibraryItem> tracks) async {
     final tracksById = {for (final t in tracks) t.id: t};
-    final selected = <LocalLibraryItem>[];
-    for (final id in _selectedIds) {
-      final item = tracksById[id];
-      if (item == null) continue;
-      selected.add(item);
-    }
-
-    if (selected.isEmpty) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.l10n.replayGainBatchConfirmTitle),
-        content: Text(ctx.l10n.replayGainBatchConfirmMessage(selected.length)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.l10n.dialogCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(ctx.l10n.replayGainBatchConfirmTitle),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    var cancelled = false;
-    int successCount = 0;
-    final total = selected.length;
-
-    BatchProgressDialog.show(
-      context: context,
-      title: context.l10n.replayGainBatchAnalyzing,
-      total: total,
-      icon: Icons.graphic_eq,
-      onCancel: () {
-        cancelled = true;
-        BatchProgressDialog.dismiss(context);
-      },
-    );
-
-    for (int i = 0; i < total; i++) {
-      if (!mounted || cancelled) break;
-      final item = selected[i];
-      BatchProgressDialog.update(current: i + 1, detail: item.trackName);
-      try {
-        final ok = await ReplayGainService.applyToFile(item.filePath);
-        if (ok) successCount++;
-      } catch (_) {}
-    }
-
-    _exitSelectionMode();
-
-    if (!mounted) return;
-    if (!cancelled) {
-      BatchProgressDialog.dismiss(context);
-    }
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.l10n.replayGainBatchSuccess(successCount, total)),
-      ),
-    );
+    return [
+      for (final t in selectedIds.map((id) => tracksById[id]))
+        if (t != null) UnifiedLibraryItem.fromLocalLibrary(t),
+    ];
   }
 
   Widget _buildSelectionBottomBar(
@@ -1761,251 +749,102 @@ title: Text(widget.albumName)),
     List<LocalLibraryItem> tracks,
     double bottomPadding,
   ) {
-    final selectedCount = _selectedIds.length;
+    final selectedCount = selectedIds.length;
     final flacEligibleCount = _selectedFlacEligibleItems(tracks).length;
     final allSelected = selectedCount == tracks.length && tracks.isNotEmpty;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding > 0 ? 8 : 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 32,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+    return SelectionBottomBar(
+      selectedCount: selectedCount,
+      allSelected: allSelected,
+      onClose: exitSelectionMode,
+      onToggleSelectAll: () {
+        if (allSelected) {
+          exitSelectionMode();
+        } else {
+          selectAll(tracks.map((e) => e.id));
+        }
+      },
+      bottomPadding: bottomPadding,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const spacing = 8.0;
+            final columns = (constraints.maxWidth / 320).floor().clamp(2, 4);
+            final itemWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+            final actions = <Widget>[];
+
+            if (flacEligibleCount > 0) {
+              actions.add(
+                SelectionActionButton(
+                  icon: Icons.download_for_offline_outlined,
+                  label: '${context.l10n.queueFlacAction} ($flacEligibleCount)',
+                  onPressed: () => _queueSelectedAsFlac(tracks),
+                  colorScheme: colorScheme,
                 ),
+              );
+            }
+
+            actions.add(
+              SelectionActionButton(
+                icon: Icons.auto_fix_high_outlined,
+                label: '${context.l10n.trackReEnrich} ($selectedCount)',
+                onPressed: selectedCount > 0
+                    ? () => _reEnrichSelected(tracks)
+                    : null,
+                colorScheme: colorScheme,
               ),
-              Row(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: _exitSelectionMode,
-                    tooltip: MaterialLocalizations.of(
-                      context,
-                    ).closeButtonTooltip,
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(
-                      backgroundColor: colorScheme.surfaceContainerHighest,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          context.l10n.downloadedAlbumSelectedCount(
-                            selectedCount,
-                          ),
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          allSelected
-                              ? context.l10n.downloadedAlbumAllSelected
-                              : context.l10n.downloadedAlbumTapToSelect,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () {
-                      if (allSelected) {
-                        _exitSelectionMode();
-                      } else {
-                        _selectAll(tracks);
-                      }
-                    },
-                    icon: Icon(
-                      allSelected ? Icons.deselect : Icons.select_all,
-                      size: 20,
-                    ),
-                    label: Text(
-                      allSelected
-                          ? context.l10n.actionDeselect
-                          : context.l10n.actionSelectAll,
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: colorScheme.primary,
-                    ),
-                  ),
-                ],
+            );
+
+            actions.add(
+              SelectionActionButton(
+                icon: Icons.swap_horiz,
+                label: context.l10n.selectionConvertCount(selectedCount),
+                onPressed: selectedCount > 0
+                    ? () => showBatchConvertSheet(
+                        context,
+                        ref,
+                        _selectedUnifiedItems(tracks),
+                        onExitSelectionMode: exitSelectionMode,
+                      )
+                    : null,
+                colorScheme: colorScheme,
               ),
-              const SizedBox(height: 12),
+            );
 
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  const spacing = 8.0;
-                  final itemWidth = (constraints.maxWidth - spacing) / 2;
-                  final actions = <Widget>[];
-
-                  if (flacEligibleCount > 0) {
-                    actions.add(
-                      _LocalAlbumSelectionActionButton(
-                        icon: Icons.download_for_offline_outlined,
-                        label:
-                            '${context.l10n.queueFlacAction} ($flacEligibleCount)',
-                        onPressed: () => _queueSelectedAsFlac(tracks),
-                        colorScheme: colorScheme,
-                      ),
-                    );
-                  }
-
-                  actions.add(
-                    _LocalAlbumSelectionActionButton(
-                      icon: Icons.auto_fix_high_outlined,
-                      label: '${context.l10n.trackReEnrich} ($selectedCount)',
-                      onPressed: selectedCount > 0
-                          ? () => _reEnrichSelected(tracks)
-                          : null,
-                      colorScheme: colorScheme,
-                    ),
-                  );
-
-                  actions.add(
-                    _LocalAlbumSelectionActionButton(
-                      icon: Icons.swap_horiz,
-                      label: context.l10n.selectionConvertCount(selectedCount),
-                      onPressed: selectedCount > 0
-                          ? () => _showBatchConvertSheet(context, tracks)
-                          : null,
-                      colorScheme: colorScheme,
-                    ),
-                  );
-
-                  actions.add(
-                    _LocalAlbumSelectionActionButton(
-                      icon: Icons.graphic_eq,
-                      label: context.l10n.selectionReplayGainCount(
-                        selectedCount,
-                      ),
-                      onPressed: selectedCount > 0
-                          ? () => _runBatchReplayGain(tracks)
-                          : null,
-                      colorScheme: colorScheme,
-                    ),
-                  );
-
-                  return Wrap(
-                    spacing: spacing,
-                    runSpacing: spacing,
-                    children: [
-                      for (final action in actions)
-                        SizedBox(width: itemWidth, child: action),
-                    ],
-                  );
-                },
+            actions.add(
+              SelectionActionButton(
+                icon: Icons.graphic_eq,
+                label: context.l10n.selectionReplayGainCount(selectedCount),
+                onPressed: selectedCount > 0
+                    ? () => runBatchReplayGain(
+                        context,
+                        _selectedUnifiedItems(tracks),
+                        onExitSelectionMode: exitSelectionMode,
+                      )
+                    : null,
+                colorScheme: colorScheme,
               ),
+            );
 
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: selectedCount > 0
-                      ? () => _deleteSelected(tracks)
-                      : null,
-                  icon: const Icon(Icons.delete_outline),
-                  label: Text(
-                    selectedCount > 0
-                        ? context.l10n.downloadedAlbumDeleteCount(selectedCount)
-                        : context.l10n.downloadedAlbumSelectToDelete,
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: selectedCount > 0
-                        ? colorScheme.error
-                        : colorScheme.surfaceContainerHighest,
-                    foregroundColor: selectedCount > 0
-                        ? colorScheme.onError
-                        : colorScheme.onSurfaceVariant,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final action in actions)
+                  SizedBox(width: itemWidth, child: action),
+              ],
+            );
+          },
         ),
-      ),
-    );
-  }
-}
 
-class _LocalAlbumSelectionActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onPressed;
-  final ColorScheme colorScheme;
-
-  const _LocalAlbumSelectionActionButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDisabled = onPressed == null;
-    return Material(
-      color: isDisabled
-          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
-          : colorScheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isDisabled
-                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-                    : colorScheme.onSecondaryContainer,
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isDisabled
-                        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-                        : colorScheme.onSecondaryContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        const SizedBox(height: 8),
+        DestructiveSelectionButton(
+          count: selectedCount,
+          colorScheme: colorScheme,
+          onPressed: () => _deleteSelected(tracks),
         ),
-      ),
+      ],
     );
   }
 }

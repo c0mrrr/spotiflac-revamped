@@ -34,10 +34,13 @@ class DownloadItem {
   final String? filePath;
   final String? error;
   final DownloadErrorType? errorType;
+  final String preparationStage;
   final DateTime createdAt;
   final String? qualityOverride;
   final String? playlistName;
   final int? playlistPosition; // 1-based position in the source playlist
+  final bool fromBatch;
+  final bool preserveQualityVariant;
 
   const DownloadItem({
     required this.id,
@@ -51,10 +54,13 @@ class DownloadItem {
     this.filePath,
     this.error,
     this.errorType,
+    this.preparationStage = '',
     required this.createdAt,
     this.qualityOverride,
     this.playlistName,
     this.playlistPosition,
+    this.fromBatch = false,
+    this.preserveQualityVariant = false,
   });
 
   DownloadItem copyWith({
@@ -69,10 +75,13 @@ class DownloadItem {
     String? filePath,
     String? error,
     DownloadErrorType? errorType,
+    String? preparationStage,
     DateTime? createdAt,
     String? qualityOverride,
     String? playlistName,
     int? playlistPosition,
+    bool? fromBatch,
+    bool? preserveQualityVariant,
   }) {
     return DownloadItem(
       id: id ?? this.id,
@@ -86,10 +95,14 @@ class DownloadItem {
       filePath: filePath ?? this.filePath,
       error: error ?? this.error,
       errorType: errorType ?? this.errorType,
+      preparationStage: preparationStage ?? this.preparationStage,
       createdAt: createdAt ?? this.createdAt,
       qualityOverride: qualityOverride ?? this.qualityOverride,
       playlistName: playlistName ?? this.playlistName,
       playlistPosition: playlistPosition ?? this.playlistPosition,
+      fromBatch: fromBatch ?? this.fromBatch,
+      preserveQualityVariant:
+          preserveQualityVariant ?? this.preserveQualityVariant,
     );
   }
 

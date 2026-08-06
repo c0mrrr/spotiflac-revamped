@@ -1,14 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/screens/artist_screen.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
 import 'package:spotiflac_android/utils/nav_bar_inset.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class FavoriteArtistsScreen extends ConsumerWidget {
   const FavoriteArtistsScreen({super.key});
@@ -19,49 +19,12 @@ class FavoriteArtistsScreen extends ConsumerWidget {
       libraryCollectionsProvider.select((state) => state.favoriteArtists),
     );
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
     final bottomInset = context.navBarBottomInset;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            expandedHeight: 120 + topPadding,
-            collapsedHeight: kToolbarHeight,
-            floating: false,
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            leading: IconButton(
-              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
-            flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-              builder: (context, constraints) {
-                final maxHeight = 120 + topPadding;
-                final minHeight = kToolbarHeight + topPadding;
-                final expandRatio =
-                    ((constraints.maxHeight - minHeight) /
-                            (maxHeight - minHeight))
-                        .clamp(0.0, 1.0);
-                final leftPadding = 56 - (32 * expandRatio);
-
-                return FlexibleSpaceBar(
-                  expandedTitleScale: 1.0,
-                  titlePadding: EdgeInsets.only(left: leftPadding, bottom: 16),
-                  title: Text(
-                    context.l10n.collectionFavoriteArtists,
-                    style: TextStyle(
-                      fontSize: 20 + (8 * expandRatio),
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                );
-              },
-            )]),
-          ),
+          AppSliverHeader.page(title: context.l10n.collectionFavoriteArtists),
           if (artists.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -96,67 +59,70 @@ class FavoriteArtistsScreen extends ConsumerWidget {
               ),
             )
           else
-            SliverList.separated(
-              itemCount: artists.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final artist = artists[index];
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  leading: _ArtistThumbnail(artist: artist),
-                  title: Text(
-                    artist.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle:
-                      artist.providerId == null || artist.providerId!.isEmpty
-                      ? null
-                      : Text(
-                          artist.providerId!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                  trailing: IconButton(
-                    tooltip: context.l10n.artistOptionRemoveFromFavorites,
-                    icon: Icon(Icons.favorite, color: colorScheme.error),
-                    onPressed: () async {
-                      await ref
-                          .read(libraryCollectionsProvider.notifier)
-                          .removeFavoriteArtist(artist.key);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            context.l10n.collectionRemovedFromFavoriteArtists(
-                              artist.name,
+            SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: wideListInset(context)),
+              sliver: SliverList.separated(
+                itemCount: artists.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final artist = artists[index];
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    leading: _ArtistThumbnail(artist: artist),
+                    title: Text(
+                      artist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle:
+                        artist.providerId == null || artist.providerId!.isEmpty
+                        ? null
+                        : Text(
+                            artist.providerId!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                    trailing: IconButton(
+                      tooltip: context.l10n.artistOptionRemoveFromFavorites,
+                      icon: Icon(Icons.favorite, color: colorScheme.error),
+                      onPressed: () async {
+                        await ref
+                            .read(libraryCollectionsProvider.notifier)
+                            .removeFavoriteArtist(artist.key);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.l10n.collectionRemovedFromFavoriteArtists(
+                                artist.name,
+                              ),
                             ),
+                          ),
+                        );
+                      },
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        slidePageRoute<void>(
+                          page: ArtistScreen(
+                            artistId: artist.artistId,
+                            artistName: artist.name,
+                            coverUrl: artist.imageUrl,
+                            extensionId:
+                                artist.providerId != null &&
+                                    artist.providerId!.isNotEmpty
+                                ? artist.providerId
+                                : null,
                           ),
                         ),
                       );
                     },
-                  ),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      slidePageRoute<void>(
-                        page: ArtistScreen(
-                          artistId: artist.artistId,
-                          artistName: artist.name,
-                          coverUrl: artist.imageUrl,
-                          extensionId:
-                              artist.providerId != null &&
-                                  artist.providerId!.isNotEmpty
-                              ? artist.providerId
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
+                  );
+                },
+              ),
             ),
           SliverToBoxAdapter(child: SizedBox(height: bottomInset)),
         ],

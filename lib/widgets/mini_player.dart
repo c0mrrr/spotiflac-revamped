@@ -1,156 +1,169 @@
-import 'dart:io';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/providers/music_player_provider.dart';
-import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/screens/now_playing_screen.dart';
-import 'package:spotiflac_android/services/cover_cache_manager.dart';
+import 'package:spotiflac_android/widgets/player_artwork.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 
-class MiniPlayer extends ConsumerWidget {
+class MiniPlayer extends ConsumerStatefulWidget {
   const MiniPlayer({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends ConsumerState<MiniPlayer> {
+  // Hides the bar in the frames between a swipe-dismiss and the stopped
+  // service clearing the media item (a dismissed Dismissible must leave the
+  // tree immediately). Playing the same track again shows the bar normally.
+  String? _dismissedItemId;
+
+  @override
+  Widget build(BuildContext context) {
     final mediaItem = ref.watch(currentMediaItemProvider).value;
     if (mediaItem == null) return const SizedBox.shrink();
 
-    final playback = ref.watch(playbackStateProvider).value;
-    final isPlaying = playback?.playing ?? false;
+    final isPlaying = ref.watch(playbackPlayingProvider);
+    final isLoading = ref.watch(playbackLoadingProvider);
+    if (mediaItem.id == _dismissedItemId && !isPlaying) {
+      return const SizedBox.shrink();
+    }
+
     final controller = ref.read(musicPlayerControllerProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    final duration = mediaItem.duration?.inMilliseconds ?? 0;
-    final position = playback?.position.inMilliseconds ?? 0;
-    final progress = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
-
-    return DecoratedBox(
-      position: DecorationPosition.foreground,
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+    return Dismissible(
+      key: ValueKey('mini-player-${mediaItem.id}'),
+      direction: DismissDirection.horizontal,
+      onDismissed: (_) {
+        setState(() => _dismissedItemId = mediaItem.id);
+        controller.stop();
+      },
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
           ),
         ),
-      ),
-      child: Material(
-        color: ref.watch(themeProvider).enableBlur 
-            ? settingsGroupColor(context).withValues(alpha: 0.72)
-            : settingsGroupColor(context),
-        child: InkWell(
-        onTap: () {
-          Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const NowPlayingScreen(),
-              fullscreenDialog: true,
-            ),
-          );
-        },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 2,
-              backgroundColor: colorScheme.surfaceContainerHighest,
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: _MiniArt(
-                        artUri: mediaItem.artUri?.toString(),
-                        colorScheme: colorScheme,
+        child: Material(
+          color: settingsGroupColor(context).withValues(alpha: 0.72),
+          child: InkWell(
+            onTap: () {
+              Navigator.of(
+                context,
+                rootNavigator: true,
+              ).push(MaterialPageRoute<void>(
+                builder: (_) => const NowPlayingScreen(),
+                fullscreenDialog: true,
+              ));
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _MiniPlayerProgress(
+                  duration: mediaItem.duration ?? Duration.zero,
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Hero(
+                        tag: 'now_playing_artwork',
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: PlayerArtwork(
+                              artUri: mediaItem.artUri?.toString(),
+                              colorScheme: colorScheme,
+                              cacheWidth: 132,
+                              iconSize: 22,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          mediaItem.title,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              mediaItem.title,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              mediaItem.artist ?? '',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        Text(
-                          mediaItem.artist ?? '',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.onSurfaceVariant),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: isLoading
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+                        onPressed: isLoading
+                            ? null
+                            : () => controller.togglePlayPause(isPlaying),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next),
+                        onPressed: controller.next,
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                    onPressed: () => controller.togglePlayPause(isPlaying),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next),
-                    onPressed: controller.next,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
 
-class _MiniArt extends StatelessWidget {
-  final String? artUri;
-  final ColorScheme colorScheme;
+class _MiniPlayerProgress extends ConsumerWidget {
+  final Duration duration;
+  final Color backgroundColor;
 
-  const _MiniArt({required this.artUri, required this.colorScheme});
+  const _MiniPlayerProgress({
+    required this.duration,
+    required this.backgroundColor,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: colorScheme.surfaceContainerHighest,
-      child: Icon(
-        Icons.music_note,
-        size: 22,
-        color: colorScheme.onSurfaceVariant,
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final durationMs = duration.inMilliseconds;
+    final positionMs = ref.watch(playbackPositionProvider).inMilliseconds;
+    final progress = durationMs > 0
+        ? (positionMs / durationMs).clamp(0.0, 1.0)
+        : 0.0;
+    return LinearProgressIndicator(
+      value: progress,
+      minHeight: 2,
+      backgroundColor: backgroundColor,
     );
-    final uri = artUri;
-    if (uri == null || uri.isEmpty) return placeholder;
-    if (uri.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: uri,
-        fit: BoxFit.cover,
-        cacheManager: CoverCacheManager.instance,
-        memCacheWidth: 132,
-        fadeInDuration: const Duration(milliseconds: 150),
-        fadeOutDuration: const Duration(milliseconds: 0),
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => placeholder,
-      );
-    }
-    if (uri.startsWith('file://')) {
-      return Image.file(
-        File(Uri.parse(uri).toFilePath()),
-        fit: BoxFit.cover,
-        cacheWidth: 132,
-        errorBuilder: (_, _, _) => placeholder,
-      );
-    }
-    return placeholder;
   }
 }

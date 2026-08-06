@@ -30,7 +30,8 @@ class AppLocalizationsId extends AppLocalizations {
   String get homeTitle => 'Beranda';
 
   @override
-  String get homeSubtitle => 'Paste a supported URL or search by name';
+  String get homeSubtitle =>
+      'Tempel URL yang didukung atau cari berdasarkan nama';
 
   @override
   String get homeEmptyTitle => 'Belum ada penyedia pencarian';
@@ -39,7 +40,8 @@ class AppLocalizationsId extends AppLocalizations {
   String get homeEmptySubtitle => 'Instal ekstensi untuk melanjutkan.';
 
   @override
-  String get homeSupports => 'Mendukung: URL Track, Album, Playlist, Artis';
+  String get homeSupports =>
+      'Mendukung: URL Lagu, Album, Daftar Putar, dan Artis';
 
   @override
   String get homeRecent => 'Terbaru';
@@ -64,9 +66,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get settingsAppearance => 'Tampilan';
-
-  @override
-  String get settingsOptions => 'Opsi';
 
   @override
   String get settingsExtensions => 'Ekstensi';
@@ -114,23 +113,19 @@ class AppLocalizationsId extends AppLocalizations {
       'Gunakan warna dari wallpaper Anda';
 
   @override
-  String get appearanceArtworkBackground => 'Animated Artwork Background';
-
-  @override
+@override
   String get appearanceArtworkBackgroundSubtitle =>
       'Smoothly animate blurry metadata song image colors';
 
-  @override
+@override
   String get appearanceHistoryView => 'Tampilan Riwayat';
+
 
   @override
   String get appearanceHistoryViewList => 'Daftar';
 
   @override
   String get appearanceHistoryViewGrid => 'Kisi';
-
-  @override
-  String get optionsTitle => 'Opsi';
 
   @override
   String get optionsPrimaryProvider => 'Provider Utama';
@@ -145,33 +140,18 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get optionsDefaultSearchTab => 'Default Search Tab';
+  String get optionsDefaultSearchTab => 'Tab Pencarian Default';
 
   @override
   String get optionsDefaultSearchTabSubtitle =>
       'Pilih tab mana yang terbuka terlebih dahulu untuk hasil pencarian baru.';
 
   @override
-  String get optionsSwitchBack =>
-      'Choose the default search provider to switch back from an extension';
-
-  @override
-  String get optionsAutoFallback => 'Cadangan Otomatis';
+  String get optionsAutoFallback => 'Layanan Cadangan';
 
   @override
   String get optionsAutoFallbackSubtitle =>
       'Coba layanan lain jika unduhan gagal';
-
-  @override
-  String get optionsUseExtensionProviders => 'Gunakan Provider Ekstensi';
-
-  @override
-  String get optionsUseExtensionProvidersOn =>
-      'Extension providers are enabled';
-
-  @override
-  String get optionsUseExtensionProvidersOff =>
-      'Extension providers are required';
 
   @override
   String get optionsEmbedLyrics => 'Sematkan Lirik';
@@ -199,20 +179,16 @@ class AppLocalizationsId extends AppLocalizations {
       'Dinonaktifkan: tidak ada tag normalisasi kenyaringan';
 
   @override
-  String get trackReplayGain => 'Rescan ReplayGain';
+  String get trackReplayGain => 'Pindai ulang ReplayGain';
 
   @override
-  String get trackReplayGainSubtitle =>
-      'Analyze loudness and write ReplayGain tags';
+  String get trackReplayGainScanning => 'Menganalisis kenyaringan...';
 
   @override
-  String get trackReplayGainScanning => 'Analyzing loudness...';
+  String get trackReplayGainSuccess => 'Tag ReplayGain ditambahkan';
 
   @override
-  String get trackReplayGainSuccess => 'ReplayGain tags added';
-
-  @override
-  String get trackReplayGainFailed => 'Failed to add ReplayGain tags';
+  String get trackReplayGainFailed => 'Gagal menambahkan tag ReplayGain';
 
   @override
   String selectionReplayGainCount(int count) {
@@ -220,19 +196,19 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get replayGainBatchConfirmTitle => 'Add ReplayGain';
+  String get replayGainBatchConfirmTitle => 'Tambah ReplayGain';
 
   @override
   String replayGainBatchConfirmMessage(int count) {
-    return 'Analyze loudness and write ReplayGain tags to $count track(s)?';
+    return 'Analisis kenyaringan dan tulis tag ReplayGain ke $count trek?';
   }
 
   @override
-  String get replayGainBatchAnalyzing => 'Analyzing ReplayGain...';
+  String get replayGainBatchAnalyzing => 'Menganalisis ReplayGain...';
 
   @override
   String replayGainBatchSuccess(int success, int total) {
-    return 'ReplayGain added to $success of $total tracks';
+    return 'ReplayGain ditambahkan ke $success dari $total trek';
   }
 
   @override
@@ -257,10 +233,10 @@ class AppLocalizationsId extends AppLocalizations {
       'Tulis satu tag artis per artis untuk FLAC dan Opus; MP3 dan M4A tetap tergabung.';
 
   @override
-  String get optionsExtensionStore => 'Extension Repo';
+  String get optionsExtensionStore => 'Repositori Ekstensi';
 
   @override
-  String get optionsExtensionStoreSubtitle => 'Show Repo tab in navigation';
+  String get optionsExtensionStoreSubtitle => 'Tampilkan tab Repo di navigasi';
 
   @override
   String get optionsCheckUpdates => 'Periksa Pembaruan';
@@ -297,26 +273,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get optionsDetailedLoggingOff => 'Aktifkan untuk laporan bug';
 
   @override
-  String get optionsSpotifyCredentials => 'Kredensial Spotify';
-
-  @override
-  String optionsSpotifyCredentialsConfigured(String clientId) {
-    return 'ID Klien: $clientId...';
-  }
-
-  @override
-  String get optionsSpotifyCredentialsRequired =>
-      'Diperlukan - ketuk untuk mengatur';
-
-  @override
-  String get optionsSpotifyWarning =>
-      'Spotify memerlukan kredensial API Anda sendiri. Dapatkan gratis dari developer.spotify.com';
-
-  @override
-  String get optionsSpotifyDeprecationWarning =>
-      'Pencarian Spotify akan dihentikan pada 3 Maret 2026 karena perubahan API Spotify. Silakan beralih ke Deezer.';
-
-  @override
   String get extensionsTitle => 'Ekstensi';
 
   @override
@@ -328,15 +284,10 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String extensionsAuthor(String author) {
-    return 'oleh $author';
-  }
-
-  @override
   String get extensionsUninstall => 'Copot';
 
   @override
-  String get storeTitle => 'Extension Repo';
+  String get storeTitle => 'Repositori Ekstensi';
 
   @override
   String get storeSearch => 'Cari ekstensi...';
@@ -360,7 +311,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get aboutMobileDeveloper => 'Pengembang versi mobile';
 
   @override
-  String get aboutOriginalCreator => 'Pembuat SpotiFLAC asli';
+  String get aboutOriginalCreator => 'Pencipta SpotiFLAC asli';
 
   @override
   String get aboutLogoArtist =>
@@ -382,7 +333,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get aboutPCSource => 'Kode sumber PC';
 
   @override
-  String get aboutKeepAndroidOpen => 'Keep Android Open';
+  String get aboutKeepAndroidOpen => 'Biarkan Android tetap terbuka';
 
   @override
   String get aboutReportIssue => 'Laporkan masalah';
@@ -420,11 +371,11 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get aboutBinimumDesc =>
-      'The creator of QQDL & HiFi API. This project helped shape lossless download support.';
+      'Pencipta QQDL & HiFi API. Proyek ini membantu membentuk dukungan unduhan lossless.';
 
   @override
   String get aboutSachinsenalDesc =>
-      'The original HiFi project creator. A foundation for lossless-source integration.';
+      'Pencipta proyek HiFi asli. Sebuah fondasi untuk integrasi sumber lossless.';
 
   @override
   String get aboutSjdonadoDesc =>
@@ -432,7 +383,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get aboutAppDescription =>
-      'Search music metadata, manage extensions, and organize your library.';
+      'Cari metadata musik, kelola ekstensi, dan atur perpustakaan Anda.';
 
   @override
   String get artistAlbums => 'Album';
@@ -581,14 +532,14 @@ class AppLocalizationsId extends AppLocalizations {
       'Harap aktifkan \"Izinkan akses untuk mengelola semua file\" di layar berikutnya.';
 
   @override
-  String get setupLanguageTitle => 'Choose Language';
+  String get setupLanguageTitle => 'Pilih Bahasa';
 
   @override
   String get setupLanguageDescription =>
-      'Select your preferred language for the app. You can change this later in Settings.';
+      'Pilih bahasa pilihan Anda untuk aplikasi ini. Anda dapat mengubahnya nanti di Pengaturan.';
 
   @override
-  String get setupLanguageSystemDefault => 'System Default';
+  String get setupLanguageSystemDefault => 'Bawaan Sistem';
 
   @override
   String get dialogCancel => 'Batal';
@@ -612,16 +563,16 @@ class AppLocalizationsId extends AppLocalizations {
   String get dialogImport => 'Impor';
 
   @override
-  String get dialogDownload => 'Download';
+  String get dialogDownload => 'Unduh';
 
   @override
-  String get previewPlay => 'Play preview';
+  String get previewPlay => 'Putar pratinjau';
 
   @override
-  String get previewStop => 'Stop preview';
+  String get previewStop => 'Hentikan pratinjau';
 
   @override
-  String get previewUnavailable => 'Preview unavailable';
+  String get previewUnavailable => 'Pratinjau tidak tersedia';
 
   @override
   String get dialogDiscard => 'Buang';
@@ -692,6 +643,52 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
+  String get collectionExportM3u => 'Export as M3U8';
+
+  @override
+  String collectionExportM3uDone(int exported, int total) {
+    return 'Exported $exported of $total tracks';
+  }
+
+  @override
+  String get collectionExportM3uNone => 'No downloaded files to export';
+
+  @override
+  String get collectionExportM3uFailed => 'Export failed';
+
+  @override
+  String get trackOpenOn => 'Open on...';
+
+  @override
+  String get trackOpenOnNoLinks => 'No platform links found for this track.';
+
+  @override
+  String get libraryReviewDuplicates => 'Review duplicates';
+
+  @override
+  String get libraryReviewDuplicatesSubtitle =>
+      'Find tracks stored more than once';
+
+  @override
+  String get duplicatesTitle => 'Duplicates';
+
+  @override
+  String get duplicatesEmpty => 'No duplicate tracks found.';
+
+  @override
+  String get duplicatesKeepBest => 'Keep best';
+
+  @override
+  String duplicatesKeepBestMessage(int count, String trackName) {
+    return 'Delete $count lower-quality copies of \"$trackName\"?';
+  }
+
+  @override
+  String duplicatesDeleteCopyMessage(String trackName) {
+    return 'Delete this copy of \"$trackName\"?';
+  }
+
+  @override
   String snackbarAddedToQueue(String trackName) {
     return 'Menambahkan \"$trackName\" ke antrian';
   }
@@ -715,12 +712,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get snackbarHistoryCleared => 'Riwayat dihapus';
 
   @override
-  String get snackbarCredentialsSaved => 'Kredensial disimpan';
-
-  @override
-  String get snackbarCredentialsCleared => 'Kredensial dihapus';
-
-  @override
   String snackbarDeletedTracks(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -735,9 +726,6 @@ class AppLocalizationsId extends AppLocalizations {
   String snackbarCannotOpenFile(String error) {
     return 'Tidak dapat membuka file: $error';
   }
-
-  @override
-  String get snackbarFillAllFields => 'Harap isi semua field';
 
   @override
   String get snackbarViewQueue => 'Lihat Antrian';
@@ -787,7 +775,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get errorNoTracksFound => 'Tidak ada lagu ditemukan';
 
   @override
-  String get searchEmptyResultSubtitle => 'Try another keyword';
+  String get searchEmptyResultSubtitle => 'Coba kata kunci lain';
 
   @override
   String get errorUrlNotRecognized => 'Tautan tidak dikenali';
@@ -821,12 +809,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get actionDeselect => 'Batal Pilih';
 
   @override
-  String get actionRemoveCredentials => 'Hapus Kredensial';
-
-  @override
-  String get actionSaveCredentials => 'Simpan Kredensial';
-
-  @override
   String selectionSelected(int count) {
     return '$count dipilih';
   }
@@ -858,34 +840,34 @@ class AppLocalizationsId extends AppLocalizations {
   String get searchPlaylists => 'Playlist';
 
   @override
-  String get searchSortTitle => 'Sort Results';
+  String get searchSortTitle => 'Urutkan hasil';
 
   @override
   String get searchSortDefault => 'Default';
 
   @override
-  String get searchSortTitleAZ => 'Title (A-Z)';
+  String get searchSortTitleAZ => 'Judul (A-Z)';
 
   @override
-  String get searchSortTitleZA => 'Title (Z-A)';
+  String get searchSortTitleZA => 'Judul (Z-A)';
 
   @override
-  String get searchSortArtistAZ => 'Artist (A-Z)';
+  String get searchSortArtistAZ => 'Artis (A-Z)';
 
   @override
-  String get searchSortArtistZA => 'Artist (Z-A)';
+  String get searchSortArtistZA => 'Artis (Z-A)';
 
   @override
-  String get searchSortDurationShort => 'Duration (Shortest)';
+  String get searchSortDurationShort => 'Durasi (Terpendek)';
 
   @override
-  String get searchSortDurationLong => 'Duration (Longest)';
+  String get searchSortDurationLong => 'Durasi (Terpanjang)';
 
   @override
-  String get searchSortDateOldest => 'Release Date (Oldest)';
+  String get searchSortDateOldest => 'Tanggal rilis (Terlama)';
 
   @override
-  String get searchSortDateNewest => 'Release Date (Newest)';
+  String get searchSortDateNewest => 'Tanggal rilis (Terbaru)';
 
   @override
   String get tooltipPlay => 'Putar';
@@ -957,6 +939,14 @@ class AppLocalizationsId extends AppLocalizations {
   String get updateNewVersionReady => 'Versi baru sudah siap';
 
   @override
+  String get updateRequiredTitle => 'Update required';
+
+  @override
+  String updateRequiredNotice(int count) {
+    return 'This version is $count releases behind and is no longer supported. Update to keep using the app.';
+  }
+
+  @override
   String get updateCurrent => 'Saat ini';
 
   @override
@@ -966,7 +956,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get updateDownloading => 'Mengunduh...';
 
   @override
-  String get updateWhatsNew => 'Yang Baru';
+  String get updateWhatsNew => 'Apa yang baru';
 
   @override
   String get updateDownloadInstall => 'Unduh & Pasang';
@@ -986,18 +976,12 @@ class AppLocalizationsId extends AppLocalizations {
       'Jika lagu tidak tersedia di provider pertama, aplikasi akan otomatis mencoba yang berikutnya.';
 
   @override
-  String get providerPriorityFallbackExtensionsTitle => 'Extension Fallback';
-
-  @override
   String get providerPriorityFallbackExtensionsDescription =>
-      'Choose which installed download extensions can be used during automatic fallback.';
+      'Pilih ekstensi unduhan terpasang mana yang dapat digunakan selama fallback otomatis.';
 
   @override
   String get providerPriorityFallbackExtensionsHint =>
-      'Only enabled extensions with download-provider capability are listed here.';
-
-  @override
-  String get providerBuiltIn => 'Legacy';
+      'Hanya ekstensi yang diaktifkan dengan kemampuan penyedia unduhan yang tercantum di sini.';
 
   @override
   String get providerExtension => 'Ekstensi';
@@ -1012,12 +996,6 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get metadataProviderPriorityInfo =>
       'Deezer tidak memiliki batas rate dan direkomendasikan sebagai utama. Spotify mungkin membatasi rate setelah banyak permintaan.';
-
-  @override
-  String get metadataNoRateLimits => 'Tidak ada batas rate';
-
-  @override
-  String get metadataMayRateLimit => 'Mungkin dibatasi rate';
 
   @override
   String get logTitle => 'Log';
@@ -1066,25 +1044,6 @@ class AppLocalizationsId extends AppLocalizations {
   String logEntries(int count) {
     return 'Entri ($count)';
   }
-
-  @override
-  String get credentialsTitle => 'Kredensial Spotify';
-
-  @override
-  String get credentialsDescription =>
-      'Masukkan Client ID dan Secret Anda untuk menggunakan kuota aplikasi Spotify Anda sendiri.';
-
-  @override
-  String get credentialsClientId => 'ID Klien';
-
-  @override
-  String get credentialsClientIdHint => 'Tempel Client ID';
-
-  @override
-  String get credentialsClientSecret => 'Rahasia Klien';
-
-  @override
-  String get credentialsClientSecretHint => 'Tempel Client Secret';
 
   @override
   String get channelStable => 'Stabil';
@@ -1168,10 +1127,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get settingsAppearanceSubtitle => 'Tema, warna, tampilan';
 
   @override
-  String get settingsDownloadSubtitle => 'Service, quality, fallback';
-
-  @override
-  String get settingsOptionsSubtitle => 'Fallback, metadata, lyrics, cover art';
+  String get settingsDownloadSubtitle => 'Layanan, kualitas, cadangan';
 
   @override
   String get settingsExtensionsSubtitle => 'Kelola provider unduhan';
@@ -1259,7 +1215,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get trackGenre => 'Genre';
 
   @override
-  String get trackLabel => 'Lebel';
+  String get trackLabel => 'Label';
 
   @override
   String get trackCopyright => 'Hak cipta';
@@ -1272,20 +1228,20 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String trackLyricsSource(String source) {
-    return 'Source: $source';
+    return 'Sumber: $source';
   }
 
   @override
   String get trackLyricsNotAvailable => 'Lirik tidak tersedia untuk lagu ini';
 
   @override
-  String get trackLyricsNotInFile => 'No lyrics found in this file';
+  String get trackLyricsNotInFile => 'Tidak ditemukan lirik dalam file ini';
 
   @override
-  String get trackFetchOnlineLyrics => 'Fetch from Online';
+  String get trackFetchOnlineLyrics => 'Ambil dari Online';
 
   @override
-  String get trackLyricsTimeout => 'Permintaan timeout. Coba lagi nanti.';
+  String get trackLyricsTimeout => 'Permintaan habis waktu. Coba lagi nanti.';
 
   @override
   String get trackLyricsLoadFailed => 'Gagal memuat lirik';
@@ -1352,55 +1308,41 @@ class AppLocalizationsId extends AppLocalizations {
   String get storeClearFilters => 'Hapus filter';
 
   @override
-  String get storeAddRepoTitle => 'Add Extension Repository';
+  String get storeAddRepoTitle => 'Tambahkan Repositori Ekstensi';
 
   @override
   String get storeAddRepoDescription =>
-      'Enter a GitHub repository URL that contains a registry.json file to browse and install extensions.';
+      'Masukkan URL repositori GitHub yang berisi file registry.json untuk menelusuri dan memasang ekstensi.';
 
   @override
-  String get storeRepoUrlLabel => 'Repository URL';
+  String get storeRepoUrlLabel => 'Tautan Repositori';
 
   @override
   String get storeRepoUrlHint => 'https://github.com/user/repo';
 
   @override
-  String get storeRepoUrlHelper =>
-      'e.g. https://github.com/user/extensions-repo';
+  String get storeAddRepoButton => 'Tambahkan Repositori';
 
   @override
-  String get storeAddRepoButton => 'Add Repository';
+  String get storeChangeRepoTooltip => 'Ubah repositori';
 
   @override
-  String get storeChangeRepoTooltip => 'Change repository';
+  String get storeRepoDialogTitle => 'Repositori Ekstensi';
 
   @override
-  String get storeRepoDialogTitle => 'Extension Repository';
+  String get storeRepoDialogCurrent => 'Repositori saat ini:';
 
   @override
-  String get storeRepoDialogCurrent => 'Current repository:';
+  String get storeNewRepoUrlLabel => 'URL Repositori Baru';
 
   @override
-  String get storeNewRepoUrlLabel => 'New Repository URL';
+  String get storeLoadError => 'Gagal memuat repositori';
 
   @override
-  String get storeLoadError => 'Failed to load repository';
+  String get storeEmptyNoExtensions => 'Tidak ada ekstensi yang tersedia';
 
   @override
-  String get storeEmptyNoExtensions => 'No extensions available';
-
-  @override
-  String get storeEmptyNoResults => 'No extensions found';
-
-  @override
-  String get extensionDefaultProvider => 'Default Search';
-
-  @override
-  String get extensionDefaultProviderSubtitle =>
-      'Use the default metadata search';
-
-  @override
-  String get extensionAuthor => 'Pembuat';
+  String get storeEmptyNoResults => 'Tidak ada ekstensi ditemukan';
 
   @override
   String get extensionId => 'ID';
@@ -1490,12 +1432,12 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String extensionsInstalledCount(int count) {
-    return '$count extensions installed successfully';
+    return '$count ekstensi berhasil terpasang';
   }
 
   @override
   String extensionsInstallPartialSuccess(int installed, int attempted) {
-    return 'Installed $installed of $attempted extensions';
+    return 'Ekstensi yang terpasang berjumlah $installed dari $attempted';
   }
 
   @override
@@ -1506,11 +1448,11 @@ class AppLocalizationsId extends AppLocalizations {
       'Atur urutan layanan unduhan';
 
   @override
-  String get extensionsFallbackTitle => 'Fallback Extensions';
+  String get extensionsFallbackTitle => 'Ekstensi Cadangan';
 
   @override
   String get extensionsFallbackSubtitle =>
-      'Choose which installed download extensions can be used as fallback';
+      'Pilih ekstensi unduhan terpasang mana yang dapat digunakan sebagai cadangan';
 
   @override
   String get extensionsNoDownloadProvider =>
@@ -1566,44 +1508,41 @@ class AppLocalizationsId extends AppLocalizations {
   String get downloadLossy320 => 'Lossy 320kbps';
 
   @override
-  String get downloadLossyFormat => 'Lossy Format';
+  String get downloadLossyFormat => 'Format Lossy';
 
   @override
-  String get downloadLossy320Format => 'Lossy 320kbps Format';
+  String get downloadLossy320Format => 'Format Lossy 320kbps';
 
   @override
   String get downloadLossy320FormatDesc =>
-      'Choose the output format for 320kbps lossy downloads. The original stream will be converted to your selected format when needed.';
+      'Pilih format output untuk unduhan lossy 320kbps. Aliran data asli akan dikonversi ke format yang Anda pilih bila diperlukan.';
 
   @override
   String get downloadLossyMp3 => 'MP3 320kbps';
 
   @override
-  String get downloadLossyMp3Subtitle => 'Best compatibility, ~10MB per track';
+  String get downloadLossyMp3Subtitle =>
+      'Kompatibilitas terbaik, ~10MB per trek';
 
   @override
   String get downloadLossyAac => 'AAC/M4A 320kbps';
 
   @override
   String get downloadLossyAacSubtitle =>
-      'Best mobile compatibility, M4A container';
+      'Kompatibilitas seluler terbaik, kontainer M4A';
 
   @override
   String get downloadLossyOpus256 => 'Opus 256kbps';
 
   @override
   String get downloadLossyOpus256Subtitle =>
-      'Best quality Opus, ~8MB per track';
+      'Opus kualitas terbaik, ~8MB per trek';
 
   @override
   String get downloadLossyOpus128 => 'Opus 128kbps';
 
   @override
-  String get downloadLossyOpus128Subtitle => 'Smallest size, ~4MB per track';
-
-  @override
-  String get qualityNote =>
-      'Kualitas sebenarnya tergantung ketersediaan lagu dari layanan';
+  String get downloadLossyOpus128Subtitle => 'Ukuran terkecil, ~4MB per trek';
 
   @override
   String get downloadAskBeforeDownload => 'Tanya Sebelum Unduh';
@@ -1618,7 +1557,8 @@ class AppLocalizationsId extends AppLocalizations {
   String get downloadAlbumFolderStructure => 'Struktur Folder Album';
 
   @override
-  String get albumFolderStructureDescription => 'Pilih struktur folder album';
+  String get albumFolderStructureDescription =>
+      'Pilih bagaimana struktur folder album akan dibuat';
 
   @override
   String get downloadUseAlbumArtistForFolders =>
@@ -1648,6 +1588,20 @@ class AppLocalizationsId extends AppLocalizations {
   String get appearanceAmoledDarkSubtitle => 'Latar belakang hitam murni';
 
   @override
+  String get appearanceHeroAnimations => 'Hero animations';
+
+  @override
+  String get appearanceHeroAnimationsSubtitle =>
+      'Fly covers between screens, e.g. when opening the player';
+
+  @override
+  String get appearanceForceBlur => 'Always use blur effects';
+
+  @override
+  String get appearanceForceBlurSubtitle =>
+      'Enable the navigation bar blur even on devices where it is off by default. May cost performance.';
+
+  @override
   String get queueClearAll => 'Hapus Semua';
 
   @override
@@ -1673,6 +1627,21 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get settingsDownloadNetworkSubtitle =>
       'Pilih jaringan mana yang akan digunakan untuk mengunduh. Jika diatur ke Hanya WiFi, unduhan akan berhenti sementara dan menggunakan data seluler.';
+
+  @override
+  String get settingsConcurrentDownloads => 'Concurrent downloads';
+
+  @override
+  String get settingsConcurrentDownloadsSubtitle =>
+      'Downloading several tracks at once is faster, but some providers may rate-limit parallel requests.';
+
+  @override
+  String get concurrentDownloadsOne => '1 track at a time';
+
+  @override
+  String concurrentDownloadsCount(int count) {
+    return 'Up to $count tracks at once';
+  }
 
   @override
   String get albumFolderArtistAlbum => 'Artis / Album';
@@ -1731,9 +1700,6 @@ class AppLocalizationsId extends AppLocalizations {
   String downloadedAlbumSelectedCount(int count) {
     return '$count dipilih';
   }
-
-  @override
-  String get downloadedAlbumAllSelected => 'Semua lagu dipilih';
 
   @override
   String get downloadedAlbumTapToSelect => 'Ketuk lagu untuk memilih';
@@ -2298,6 +2264,20 @@ class AppLocalizationsId extends AppLocalizations {
       'Cover art extracted from local music files. Will re-extract on next scan.';
 
   @override
+  String get libraryPlaybackNormalization => 'Volume normalization';
+
+  @override
+  String get libraryPlaybackNormalizationSubtitle =>
+      'Even out loudness between tracks using their ReplayGain or R128 tags, when present';
+
+  @override
+  String get cacheAudioAnalysis => 'Audio analysis cache';
+
+  @override
+  String get cacheAudioAnalysisDesc =>
+      'Saved spectrograms and analysis results. Will re-analyze on next open.';
+
+  @override
   String get cacheExploreFeed => 'Explore feed cache';
 
   @override
@@ -2375,13 +2355,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get trackSaveCoverArt => 'Save Cover Art';
 
   @override
-  String get trackSaveCoverArtSubtitle => 'Save album art as .jpg file';
-
-  @override
   String get trackSaveLyrics => 'Save Lyrics (.lrc)';
-
-  @override
-  String get trackSaveLyricsSubtitle => 'Fetch and save lyrics as .lrc file';
 
   @override
   String get trackSaveLyricsProgress => 'Saving lyrics...';
@@ -2392,9 +2366,6 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get trackReEnrichOnlineSubtitle =>
       'Search metadata online and embed into file';
-
-  @override
-  String get trackReEnrichFieldsTitle => 'Fields to update';
 
   @override
   String get trackReEnrichFieldCover => 'Cover Art';
@@ -2454,11 +2425,6 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String queueFlacFindingProgress(int current, int total) {
-    return 'Finding FLAC matches... ($current/$total)';
-  }
-
-  @override
   String get queueFlacNoReliableMatches =>
       'No reliable online matches found for the selection';
 
@@ -2476,10 +2442,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get trackConvertFormat => 'Convert Format';
 
   @override
-  String get trackConvertFormatSubtitle =>
-      'Convert to AAC/M4A, MP3, Opus, ALAC, or FLAC';
-
-  @override
   String get trackConvertTitle => 'Convert Audio';
 
   @override
@@ -2487,6 +2449,13 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get trackConvertBitrate => 'Bitrate';
+
+  @override
+  String get trackConvertKeepOriginal => 'Pertahankan file asli';
+
+  @override
+  String get trackConvertKeepOriginalDescription =>
+      'Tambahkan file hasil konversi sebagai entri library terpisah';
 
   @override
   String get trackConvertConfirmTitle => 'Confirm Conversion';
@@ -2509,6 +2478,14 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
+  String trackConvertConfirmKeepOriginal(
+    String sourceFormat,
+    String targetFormat,
+  ) {
+    return 'Konversi dari $sourceFormat ke $targetFormat?\n\nFile asli akan dipertahankan dan file hasil konversi akan ditambahkan sebagai entri library terpisah.';
+  }
+
+  @override
   String get trackConvertLosslessHint =>
       'Lossless conversion — no quality loss';
 
@@ -2525,9 +2502,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get cueSplitTitle => 'Split CUE Sheet';
-
-  @override
-  String get cueSplitSubtitle => 'Split CUE+FLAC into individual tracks';
 
   @override
   String cueSplitAlbum(String album) {
@@ -2587,9 +2561,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get collectionFavoriteArtists => 'Favorite Artists';
 
   @override
-  String get collectionPlaylists => 'Playlists';
-
-  @override
   String get collectionPlaylist => 'Playlist';
 
   @override
@@ -2600,10 +2571,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get collectionNoPlaylistsYet => 'No playlists yet';
-
-  @override
-  String get collectionNoPlaylistsSubtitle =>
-      'Create a playlist to start categorizing tracks';
 
   @override
   String collectionPlaylistTracks(int count) {
@@ -2638,9 +2605,6 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get collectionPlaylistCreated => 'Playlist created';
-
-  @override
   String get collectionPlaylistNameHint => 'Playlist name';
 
   @override
@@ -2651,14 +2615,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get collectionDeletePlaylist => 'Delete playlist';
-
-  @override
-  String collectionDeletePlaylistMessage(String playlistName) {
-    return 'Delete \"$playlistName\" and all tracks inside it?';
-  }
-
-  @override
-  String get collectionPlaylistDeleted => 'Playlist deleted';
 
   @override
   String get collectionPlaylistRenamed => 'Playlist renamed';
@@ -2696,11 +2652,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get collectionRemoveFromFolder => 'Remove from folder';
-
-  @override
-  String collectionRemoved(String trackName) {
-    return '\"$trackName\" removed';
-  }
 
   @override
   String collectionAddedToLoved(String trackName) {
@@ -2814,8 +2765,8 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String selectionBatchConvertProgress(int current, int total) {
-    return 'Converting $current of $total...';
+  String selectionBatchConvertConfirmKeepOriginal(int count, String format) {
+    return 'Konversi $count lagu ke $format?\n\nFile asli akan dipertahankan dan file hasil konversi akan ditambahkan sebagai entri library terpisah.';
   }
 
   @override
@@ -2915,93 +2866,101 @@ class AppLocalizationsId extends AppLocalizations {
   String get settingsDonateSubtitle => 'Buy the developer a coffee';
 
   @override
-  String get settingsBackup => 'Cadangkan & Pulihkan';
+  String get settingsBackup => 'Backup & Restore';
 
   @override
   String get settingsBackupSubtitle =>
-      'Pindahkan pustaka, riwayat, dan pengaturan ke perangkat baru';
+      'Move your library, history and settings to a new device';
 
   @override
-  String get backupTitle => 'Cadangkan & Pulihkan';
+  String get backupTitle => 'Backup & Restore';
 
   @override
-  String get backupExportSectionTitle => 'Buat cadangan';
+  String get backupExportSectionTitle => 'Create backup';
 
   @override
   String get backupExportSectionDescription =>
-      'Simpan pengaturan, riwayat unduhan, lagu disukai, wishlist, artis favorit, dan playlist ke dalam satu file yang bisa kamu simpan atau pindahkan ke ponsel lain.';
+      'Save your settings, download history, liked tracks, wishlist, favorite artists and playlists into a single file you can keep or move to another phone.';
 
   @override
-  String get backupExportButton => 'Buat file cadangan';
+  String get backupExportButton => 'Create backup file';
 
   @override
-  String get backupImportSectionTitle => 'Pulihkan cadangan';
+  String get backupImportSectionTitle => 'Restore backup';
 
   @override
   String get backupImportSectionDescription =>
-      'Pilih file cadangan untuk memulihkan data. Ini akan menggantikan pengaturan, riwayat, dan pustaka di perangkat ini.';
+      'Pick a backup file to restore your data. This replaces the current settings, history and library on this device.';
 
   @override
-  String get backupImportButton => 'Pilih file cadangan';
+  String get backupImportButton => 'Choose backup file';
 
   @override
-  String get backupCreating => 'Membuat cadangan...';
+  String get backupCreated => 'Backup created';
 
   @override
-  String get backupCreated => 'Cadangan berhasil dibuat';
+  String get backupCreateFailed => 'Failed to create backup';
 
   @override
-  String get backupCreateFailed => 'Gagal membuat cadangan';
-
-  @override
-  String get backupEmpty => 'Belum ada data untuk dicadangkan';
-
-  @override
-  String get backupRestoreConfirmTitle => 'Pulihkan cadangan ini?';
+  String get backupRestoreConfirmTitle => 'Restore this backup?';
 
   @override
   String get backupRestoreConfirmMessage =>
-      'Ini akan menggantikan pengaturan, riwayat unduhan, lagu disukai, wishlist, dan playlist saat ini dengan isi cadangan. Tindakan ini tidak bisa dibatalkan.';
+      'This will replace your current settings, download history, liked tracks, wishlist and playlists with the contents of the backup. This cannot be undone.';
 
   @override
-  String get backupRestoreConfirmButton => 'Pulihkan';
+  String get backupRestoreConfirmButton => 'Restore';
 
   @override
-  String get backupRestoring => 'Memulihkan cadangan...';
+  String get backupRestored => 'Backup restored successfully';
 
   @override
-  String get backupRestored => 'Cadangan berhasil dipulihkan';
+  String get backupRestoreFailed => 'Failed to restore backup';
 
   @override
-  String get backupRestoreFailed => 'Gagal memulihkan cadangan';
-
-  @override
-  String get backupInvalidFile =>
-      'File ini bukan cadangan SpotiFLAC yang valid';
+  String get backupInvalidFile => 'This file is not a valid SpotiFLAC backup';
 
   @override
   String get backupRestoreRestartHint =>
-      'Mulai ulang aplikasi untuk memastikan semua perubahan diterapkan.';
+      'Restart the app to make sure every change is applied.';
 
   @override
-  String get backupContentsTitle => 'Isi cadangan';
+  String get backupContentsTitle => 'Backup contents';
 
   @override
-  String get backupContentsSettings => 'Pengaturan aplikasi';
+  String get backupContentsSettings => 'App settings';
 
   @override
   String backupContentsHistory(int count) {
-    return '$count item riwayat';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'items',
+      one: 'item',
+    );
+    return '$count history $_temp0';
   }
 
   @override
   String backupContentsLiked(int count) {
-    return '$count lagu disukai';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'tracks',
+      one: 'track',
+    );
+    return '$count liked $_temp0';
   }
 
   @override
   String backupContentsWishlist(int count) {
-    return '$count lagu di wishlist';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'tracks',
+      one: 'track',
+    );
+    return '$count wishlist $_temp0';
   }
 
   @override
@@ -3009,7 +2968,7 @@ class AppLocalizationsId extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count playlist',
+      other: '$count playlists',
       one: '1 playlist',
     );
     return '$_temp0';
@@ -3020,8 +2979,8 @@ class AppLocalizationsId extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count artis favorit',
-      one: '1 artis favorit',
+      other: '$count favorite artists',
+      one: '1 favorite artist',
     );
     return '$_temp0';
   }
@@ -3031,22 +2990,28 @@ class AppLocalizationsId extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count extension',
+      other: '$count extensions',
       one: '1 extension',
     );
     return '$_temp0';
   }
 
   @override
-  String get backupIncludeSecrets => 'Sertakan kredensial extension';
+  String get backupIncludeSecrets => 'Include extension credentials';
 
   @override
   String get backupIncludeSecretsDescription =>
-      'Token dan API key dari extension akan ikut disimpan ke file cadangan. Jaga kerahasiaan file-nya. Jika dimatikan, kamu perlu memasukkannya lagi setelah pemulihan.';
+      'Tokens and API keys from extensions will be saved into the backup file. Keep the file private. When off, you re-enter them after restoring.';
 
   @override
   String backupExtensionsRestoreFailed(int count) {
-    return '$count extension gagal dipasang ulang. Pasang manual dari store.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'extensions',
+      one: 'extension',
+    );
+    return '$count $_temp0 could not be reinstalled. Install them manually from the repo.';
   }
 
   @override
@@ -3123,6 +3088,24 @@ class AppLocalizationsId extends AppLocalizations {
   String get storageModeSafSubtitle => 'Pick any folder, including SD card';
 
   @override
+  String get downloadFolderAccessLostTitle => 'Download folder access lost';
+
+  @override
+  String get downloadFolderAccessLostSubtitle =>
+      'Downloads will fail until you re-select the folder';
+
+  @override
+  String get downloadFolderReselect => 'Re-select folder';
+
+  @override
+  String get downloadErrorSafPermissionLost =>
+      'SAF permission invalid or revoked. Please reconfigure download location in Settings.';
+
+  @override
+  String get downloadErrorFolderAccessLost =>
+      'Download folder access lost. Please re-select your download folder in Settings.';
+
+  @override
   String downloadFilenameDescription(
     Object album,
     Object artist,
@@ -3179,23 +3162,19 @@ class AppLocalizationsId extends AppLocalizations {
       'Using standard network settings';
 
   @override
-  String get downloadAllowLocalNetwork => 'Izinkan Akses Jaringan Lokal';
+  String get downloadAllowLocalNetwork => 'Allow Local Network Access';
 
   @override
   String get downloadAllowLocalNetworkEnabled =>
-      'Permintaan ke alamat lokal/privat diizinkan (untuk proxy lokal atau DNS kustom)';
+      'Requests to local/private addresses are allowed (for local proxy or custom DNS)';
 
   @override
   String get downloadAllowLocalNetworkDisabled =>
-      'Alamat lokal/privat diblokir demi keamanan';
+      'Local/private addresses are blocked for security';
 
   @override
   String get downloadSelectServiceToEnable =>
       'Select a provider with quality options to enable this option';
-
-  @override
-  String get downloadSelectTidalQobuz =>
-      'Select a provider with quality options to choose audio quality';
 
   @override
   String get downloadEmbedLyricsDisabled => 'Enable metadata embedding first';
@@ -3346,7 +3325,33 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get editMetadataAutoFillDesc =>
-      'Select fields to fill automatically from online metadata';
+      'Pilih extension metadata dan field, lalu periksa datanya sebelum diterapkan';
+
+  @override
+  String get editMetadataAutoFillSource => 'Sumber metadata';
+
+  @override
+  String get editMetadataAutoFillSourceAutomatic =>
+      'Otomatis (prioritas provider)';
+
+  @override
+  String get editMetadataAutoFillFind => 'Cari metadata';
+
+  @override
+  String editMetadataAutoFillPreview(String source) {
+    return 'Data dari $source';
+  }
+
+  @override
+  String get editMetadataAutoFillCoverAvailable => 'Sampul tersedia';
+
+  @override
+  String get editMetadataAutoFillApply => 'Terapkan data terpilih';
+
+  @override
+  String editMetadataAutoFillDoneFromSource(int count, String source) {
+    return 'Mengisi $count field dari $source';
+  }
 
   @override
   String get editMetadataAutoFillFetch => 'Fetch & Fill';
@@ -3421,9 +3426,6 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get queueDownloadedHeader => 'Downloaded';
-
-  @override
   String get queueFilteringIndicator => 'Filtering...';
 
   @override
@@ -3461,6 +3463,27 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get queueEmptySinglesSubtitle =>
       'Single track downloads will appear here';
+
+  @override
+  String queuePlaylistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count playlists',
+      one: '1 playlist',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get queueEmptyPlaylistsSubtitle =>
+      'Create a playlist to organize your tracks';
+
+  @override
+  String get libraryDefaultView => 'Default view';
+
+  @override
+  String get libraryDefaultViewLastUsed => 'Last used';
 
   @override
   String get queueEmptyHistory => 'No download history';
@@ -3539,6 +3562,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get audioAnalysisSpectralCutoff => 'Spectral Cutoff';
 
   @override
+  String get audioAnalysisCutoffNotDetected => 'Tidak terdeteksi';
+
+  @override
   String get audioAnalysisChannelStats => 'Per-channel Stats';
 
   @override
@@ -3549,11 +3575,6 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get audioAnalysisRescanning => 'Re-analyzing audio...';
-
-  @override
-  String extensionsSearchWith(String providerName) {
-    return 'Search with $providerName';
-  }
 
   @override
   String get extensionsHomeFeedProvider => 'Home Feed Provider';
@@ -3585,12 +3606,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get extensionsNoHomeFeedExtensions => 'No extensions with home feed';
 
   @override
-  String get sortAlphaAsc => 'A-Z';
-
-  @override
-  String get sortAlphaDesc => 'Z-A';
-
-  @override
   String get cancelDownloadTitle => 'Cancel download?';
 
   @override
@@ -3600,6 +3615,13 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get cancelDownloadKeep => 'Keep';
+
+  @override
+  String get queueCancelledTitle => 'Download cancelled';
+
+  @override
+  String get queueCancelledMessage =>
+      'This download was cancelled. Retry it or remove it from the queue.';
 
   @override
   String get metadataSaveFailedFfmpeg => 'Failed to save metadata via FFmpeg';
@@ -3612,27 +3634,6 @@ class AppLocalizationsId extends AppLocalizations {
   String snackbarFolderPickerFailed(String error) {
     return 'Failed to open folder picker: $error';
   }
-
-  @override
-  String get errorLoadAlbum => 'Failed to load album';
-
-  @override
-  String get errorLoadPlaylist => 'Failed to load playlist';
-
-  @override
-  String get errorLoadArtist => 'Failed to load artist';
-
-  @override
-  String get notifChannelDownloadName => 'Download Progress';
-
-  @override
-  String get notifChannelDownloadDesc => 'Shows download progress for tracks';
-
-  @override
-  String get notifChannelLibraryScanName => 'Library Scan';
-
-  @override
-  String get notifChannelLibraryScanDesc => 'Shows local library scan progress';
 
   @override
   String notifDownloadingTrack(String trackName) {
@@ -3667,6 +3668,13 @@ class AppLocalizationsId extends AppLocalizations {
   String notifDownloadsFinished(int completed, int failed) {
     return 'Downloads Finished ($completed done, $failed failed)';
   }
+
+  @override
+  String get notifVerificationRequiredTitle => 'Verification required';
+
+  @override
+  String get notifVerificationRequiredBody =>
+      'Open the app to complete verification and resume downloads';
 
   @override
   String get notifAllDownloadsComplete => 'All Downloads Complete';
@@ -3803,12 +3811,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get actionPaste => 'Paste';
 
   @override
-  String get searchTracksHint => 'Search tracks...';
-
-  @override
-  String get searchTracksEmptyPrompt => 'Search for tracks';
-
-  @override
   String get tutorialSearchHint => 'Paste or search...';
 
   @override
@@ -3830,15 +3832,6 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get optionsEmbedMetadataSubtitleOff =>
       'Disabled (advanced): skip all metadata embedding';
-
-  @override
-  String get optionsMaxQualityCoverSubtitleDisabled =>
-      'Disabled when metadata embedding is off';
-
-  @override
-  String downloadFilenameHintExample(Object artist, Object title) {
-    return '$artist - $title';
-  }
 
   @override
   String get trackCoverNoEmbeddedArt => 'No embedded album art found';
@@ -3863,10 +3856,56 @@ class AppLocalizationsId extends AppLocalizations {
       'The selected cover will replace the current embedded cover when you tap Save.';
 
   @override
+  String get trackCoverResolution => 'Resolusi cover';
+
+  @override
+  String get trackCoverResolutionHint =>
+      'Mengatur sisi terpanjang saat disimpan. Memperbesar gambar tidak menambah detail.';
+
+  @override
+  String get trackCoverResizeFailed =>
+      'Ukuran cover tidak dapat diubah. Coba ukuran atau gambar lain.';
+
+  @override
   String get actionStop => 'Stop';
 
   @override
   String get queueFinalizingDownload => 'Finalizing download';
+
+  @override
+  String get queueDownloadNext => 'Download next';
+
+  @override
+  String get queueMoveUp => 'Move up';
+
+  @override
+  String get queueMoveDown => 'Move down';
+
+  @override
+  String get editMetadataMusicBrainzButton => 'Fetch from MusicBrainz';
+
+  @override
+  String get editMetadataMusicBrainzFilled => 'Updated from MusicBrainz';
+
+  @override
+  String get editMetadataMusicBrainzNothing => 'Nothing found on MusicBrainz';
+
+  @override
+  String get editMetadataMusicBrainzNeedsIsrc => 'Requires an ISRC tag';
+
+  @override
+  String get nowPlayingRepeatOff => 'Repeat off';
+
+  @override
+  String get nowPlayingRepeatAll => 'Repeat all';
+
+  @override
+  String get nowPlayingRepeatOne => 'Repeat one';
+
+  @override
+  String queueNetworkFailedOffline(int count) {
+    return '$count downloads failed while offline';
+  }
 
   @override
   String get queueDownloadedFileMissing => 'Downloaded file missing';
@@ -4009,12 +4048,6 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get optionsDefaultSearchTabAlbums => 'Albums';
-
-  @override
-  String get optionsDefaultSearchTabTracks => 'Tracks';
-
-  @override
   String get settingsFiles => 'Files & Folders';
 
   @override
@@ -4065,8 +4098,22 @@ class AppLocalizationsId extends AppLocalizations {
       'Already-downloaded tracks will be skipped';
 
   @override
+  String get downloadDeduplicationWithQualityVariants =>
+      'File yang sudah ada pada kualitas yang dipilih akan dilewati';
+
+  @override
   String get downloadDeduplicationDisabled =>
       'All tracks will be downloaded regardless of history';
+
+  @override
+  String get downloadQualityVariants => 'Izinkan versi dengan kualitas berbeda';
+
+  @override
+  String get downloadQualityVariantsDescription =>
+      'Simpan setiap versi kualitas; tambahkan kualitas terukur ke nama file hanya jika namanya sudah digunakan';
+
+  @override
+  String get trackOptionDownloadQualityVariant => 'Unduh kualitas lain';
 
   @override
   String get downloadFallbackExtensions => 'Fallback Extensions';
@@ -4105,6 +4152,9 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get libraryFilterMetadataIncorrectIsrcFormat =>
       'Incorrect ISRC format';
+
+  @override
+  String get libraryFilterMetadataMissingIsrc => 'Missing ISRC';
 
   @override
   String get libraryFilterMetadataMissingLabel => 'Missing label';
@@ -4197,6 +4247,22 @@ class AppLocalizationsId extends AppLocalizations {
   String get queueDownloadStarting => 'Starting...';
 
   @override
+  String get queueCheckingDownloadSession => 'Memeriksa sesi unduhan...';
+
+  @override
+  String get queueResolvingDownloadMetadata => 'Mencari metadata lagu...';
+
+  @override
+  String get queueResolvingDownloadStream => 'Menyiapkan stream audio...';
+
+  @override
+  String get queueWaitingForVerification => 'Menunggu verifikasi...';
+
+  @override
+  String get queueResumingAfterVerification =>
+      'Melanjutkan setelah verifikasi...';
+
+  @override
   String get a11ySelectTrack => 'Select track';
 
   @override
@@ -4256,10 +4322,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get downloadNativeWorkerSubtitle =>
-      'Beta Android service worker for extension downloads';
-
-  @override
-  String get badgeBeta => 'BETA';
+      'Layanan latar belakang Android untuk unduhan ekstensi';
 
   @override
   String get extensionServiceStatus => 'Service Status';
@@ -4384,10 +4447,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get errorInvalidFolderSelected => 'Invalid folder selected';
 
   @override
-  String get errorCouldNotKeepFolderAccess =>
-      'Could not keep access to the selected folder';
-
-  @override
   String get storeAnyVersion => 'Any';
 
   @override
@@ -4451,103 +4510,102 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get libraryPlayback => 'Pemutaran';
+  String get libraryPlayback => 'Playback';
 
   @override
-  String get libraryExternalPlayer => 'Pemutar eksternal';
+  String get libraryExternalPlayer => 'External player';
 
   @override
   String get libraryExternalPlayerSubtitle =>
-      'Disarankan untuk mendengarkan, kualitas terbaik, pemutaran tanpa jeda, EQ, dan dukungan format lebih luas';
+      'Recommended for listening, best quality, gapless playback, EQ, and wider format support';
 
   @override
-  String get libraryBuiltInPreviewPlayer => 'Pemutar pratinjau bawaan';
+  String get libraryBuiltInPreviewPlayer => 'Built-in preview player';
 
   @override
   String get libraryBuiltInPreviewPlayerSubtitle =>
-      'Hanya untuk pratinjau lokal cepat di dalam SpotiFLAC Mobile, tidak disarankan untuk mendengarkan secara rutin';
+      'Only for quick local previews inside SpotiFLAC Mobile, not recommended for regular listening';
 
   @override
   String get libraryBuiltInPlayerInfo =>
-      'Pemutar bawaan adalah alat pratinjau untuk memeriksa trek lokal dengan cepat. Gunakan pemutar musik eksternal untuk mendengarkan sebenarnya.';
+      'The built-in player is a preview tool for checking local tracks quickly. Use an external music player for actual listening.';
 
   @override
-  String get nowPlayingTitle => 'Sedang Diputar';
+  String get nowPlayingTitle => 'Now Playing';
 
   @override
-  String get nowPlayingNothingPlaying => 'Tidak ada yang diputar';
+  String get nowPlayingNothingPlaying => 'Nothing is playing';
 
   @override
-  String get nowPlayingMinimize => 'Minimalkan';
+  String get nowPlayingMinimize => 'Minimize';
 
   @override
-  String get nowPlayingUpNext => 'Berikutnya';
+  String get nowPlayingUpNext => 'Up next';
 
   @override
-  String get nowPlayingDetails => 'Detail';
+  String get nowPlayingDetails => 'Details';
 
   @override
-  String get nowPlayingOpenInExternalPlayer => 'Buka di pemutar eksternal';
+  String get nowPlayingOpenInExternalPlayer => 'Open in external player';
 
   @override
-  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
-
-  @override
+@override
   String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
 
-  @override
+@override
   String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
 
-  @override
+@override
   String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
 
-  @override
+@override
   String get nowPlayingCopiedSyncedLyrics =>
       'Time-synced lyrics copied to clipboard';
 
-  @override
+@override
   String get nowPlayingCopiedWordSyncedLyrics =>
       'Word-synced lyrics copied to clipboard';
 
-  @override
+@override
   String get nowPlayingTabPlayer => 'Pemutar';
 
-  @override
-  String get nowPlayingTabLyrics => 'Lirik';
 
   @override
-  String get nowPlayingNoLyrics => 'Tidak ada lirik di file ini';
+  String get nowPlayingTabLyrics => 'Lyrics';
 
   @override
-  String get nowPlayingLibraryEmpty => 'Perpustakaan Anda kosong';
+  String get nowPlayingNoLyrics => 'No lyrics in this file';
+
+  @override
+  String get nowPlayingLibraryEmpty => 'Your library is empty';
 
   @override
   String nowPlayingShuffleLibraryFailed(String error) {
-    return 'Tidak dapat mengacak perpustakaan: $error';
+    return 'Could not shuffle library: $error';
   }
 
   @override
-  String get nowPlayingShuffleOn => 'Acak aktif';
+  String get nowPlayingShuffleOn => 'Shuffle on';
 
   @override
-  String get nowPlayingPlayInOrder => 'Putar berurutan';
+  String get nowPlayingPlayInOrder => 'Play in order';
 
   @override
-  String get nowPlayingShuffleLibrary => 'Acak perpustakaan';
+  String get nowPlayingShuffleLibrary => 'Shuffle library';
 
   @override
-  String get nowPlayingQueueEmpty => 'Antrean kosong';
+  String get nowPlayingQueueEmpty => 'Queue is empty';
 
   @override
-  String get nowPlayingNoMetadata => 'Metadata tidak tersedia';
+  String get nowPlayingNoMetadata => 'No metadata available';
 
   @override
   String get announcementUnableToOpenLink =>
-      'Tidak dapat membuka tautan. Silakan coba lagi.';
+      'Unable to open link. Please try again.';
 
   @override
   String trackConvertLosslessOutputWithCap(String quality) {
-    return 'Output lossless dengan batas $quality';
+    return 'Lossless output with $quality cap';
   }
 
   @override
@@ -4556,7 +4614,7 @@ class AppLocalizationsId extends AppLocalizations {
     String targetFormat,
     String quality,
   ) {
-    return 'Konversi dari $sourceFormat ke $targetFormat ($quality)?\n\nOutput tetap codec lossless, tetapi kedalaman bit/sample rate akan dibatasi. File asli akan dihapus setelah konversi.';
+    return 'Convert from $sourceFormat to $targetFormat ($quality)?\n\nThe output stays in a lossless codec, but bit depth/sample rate will be capped. Original file will be deleted after conversion.';
   }
 
   @override
@@ -4568,10 +4626,10 @@ class AppLocalizationsId extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'trek',
-      one: 'trek',
+      other: 'tracks',
+      one: 'track',
     );
-    return 'Konversi $count $_temp0 ke $format ($quality)?\n\nOutput tetap codec lossless, tetapi kedalaman bit/sample rate akan dibatasi. File asli akan dihapus setelah konversi.';
+    return 'Convert $count $_temp0 to $format ($quality)?\n\nThe output stays in a lossless codec, but bit depth/sample rate will be capped. Original files will be deleted after conversion.';
   }
 
   @override
@@ -4594,47 +4652,46 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get aboutPaxsenixSubtitle =>
-      'Proxy lirik untuk Musixmatch, Netease, Apple Music, QQ Music, Spotify, Deezer, YouTube, Kugou, dan Genius';
+      'Lyrics proxy for Musixmatch, Netease, Apple Music, QQ Music, Spotify, Deezer, YouTube, Kugou, and Genius';
 
   @override
-  String get snackbarPlayingNext => 'Memutar berikutnya';
+  String get snackbarPlayingNext => 'Playing next';
 
   @override
-  String get snackbarAddedToQueueGeneric => 'Ditambahkan ke antrean';
+  String get snackbarAddedToQueueGeneric => 'Added to queue';
 
   @override
   String selectionDeletePlaylistsCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'playlist',
+      other: 'playlists',
       one: 'playlist',
     );
-    return 'Hapus $count $_temp0';
+    return 'Delete $count $_temp0';
   }
 
   @override
-  String get actionShuffle => 'Acak';
+  String get actionShuffle => 'Shuffle';
 
   @override
-  String get downloadPrimaryArtistOnlyOn => 'Hanya utama: Aktif';
+  String get downloadPrimaryArtistOnlyOn => 'Primary only: On';
 
   @override
-  String get downloadPrimaryArtistOnlyOff => 'Hanya utama: Nonaktif';
+  String get downloadPrimaryArtistOnlyOff => 'Primary only: Off';
 
   @override
   String get downloadAlbumArtistMetadataPrimaryOnly =>
-      'Metadata Album Artist: Hanya utama';
+      'Album Artist metadata: Primary only';
 
   @override
-  String get downloadAlbumArtistMetadataFull =>
-      'Metadata Album Artist: Lengkap';
+  String get downloadAlbumArtistMetadataFull => 'Album Artist metadata: Full';
 
   @override
-  String get trackConvertOriginal => 'Asli';
+  String get trackConvertOriginal => 'Original';
 
   @override
-  String get trackConvertOriginalQuality => 'Kualitas asli';
+  String get trackConvertOriginalQuality => 'Original quality';
 
   @override
   String get trackConvertLosslessSuffix => 'Lossless';
@@ -4646,7 +4703,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get trackConvertResampler => 'Resampler';
 
   @override
-  String get trackConvertDitherNone => 'Tidak ada';
+  String get trackConvertDitherNone => 'None';
 
   @override
   String get trackConvertDitherTriangular => 'TPDF';
@@ -4661,35 +4718,35 @@ class AppLocalizationsId extends AppLocalizations {
   String get trackConvertResamplerSoxr => 'SoXr';
 
   @override
-  String get updateSeeReleaseNotes => 'Lihat catatan rilis untuk detail.';
+  String get updateSeeReleaseNotes => 'See release notes for details.';
 
   @override
-  String get unknownTitle => 'Judul tidak diketahui';
+  String get unknownTitle => 'Unknown title';
 
   @override
-  String get trackPlayNext => 'Putar berikutnya';
+  String get trackPlayNext => 'Play next';
 
   @override
-  String get trackAddToQueue => 'Tambah ke antrean';
+  String get trackAddToQueue => 'Add to queue';
 
   @override
   String snackbarExtensionInstalledEnable(String extensionName) {
-    return '$extensionName terpasang. Aktifkan di Pengaturan > Ekstensi';
+    return '$extensionName installed. Enable it in Settings > Extensions';
   }
 
   @override
   String snackbarExtensionUpdatedVersion(String extensionName, String version) {
-    return '$extensionName diperbarui ke v$version';
+    return '$extensionName updated to v$version';
   }
 
   @override
   String snackbarFailedToInstallNamed(String extensionName) {
-    return 'Gagal memasang $extensionName';
+    return 'Failed to install $extensionName';
   }
 
   @override
   String snackbarFailedToUpdateNamed(String extensionName) {
-    return 'Gagal memperbarui $extensionName';
+    return 'Failed to update $extensionName';
   }
 
   @override
@@ -4699,25 +4756,25 @@ class AppLocalizationsId extends AppLocalizations {
   String get releaseTypeSingle => 'Single';
 
   @override
-  String get trackCoverOnline => 'Sampul daring';
+  String get trackCoverOnline => 'Online cover';
 
   @override
-  String get regionCountryUS => 'Amerika Serikat';
+  String get regionCountryUS => 'United States';
 
   @override
-  String get regionCountryGB => 'Britania Raya';
+  String get regionCountryGB => 'United Kingdom';
 
   @override
-  String get regionCountryFR => 'Prancis';
+  String get regionCountryFR => 'France';
 
   @override
-  String get regionCountryDE => 'Jerman';
+  String get regionCountryDE => 'Germany';
 
   @override
-  String get regionCountryJP => 'Jepang';
+  String get regionCountryJP => 'Japan';
 
   @override
-  String get regionCountryKR => 'Korea Selatan';
+  String get regionCountryKR => 'South Korea';
 
   @override
   String get regionCountryIN => 'India';
@@ -4726,62 +4783,85 @@ class AppLocalizationsId extends AppLocalizations {
   String get regionCountryID => 'Indonesia';
 
   @override
-  String get regionCountryBR => 'Brasil';
+  String get regionCountryBR => 'Brazil';
 
   @override
-  String get regionCountryMX => 'Meksiko';
+  String get regionCountryMX => 'Mexico';
 
   @override
   String get regionCountryAU => 'Australia';
 
   @override
-  String get regionCountryCA => 'Kanada';
+  String get regionCountryCA => 'Canada';
 
   @override
   String get regionCountryXK => 'Kosovo';
 
   @override
-  String get extensionVerificationBrowserTitle => 'Browser verifikasi';
+  String get extensionVerificationBrowserTitle => 'Verification browser';
 
   @override
   String get extensionVerificationBrowserSubtitleExternal =>
-      'Buka tantangan di browser default terlebih dahulu';
+      'Open challenges in the default browser first';
 
   @override
   String get extensionVerificationBrowserSubtitleInApp =>
-      'Buka tantangan di browser dalam aplikasi terlebih dahulu';
+      'Open challenges in the in-app browser first';
 
   @override
-  String get extensionVerificationBrowserExternal => 'Eksternal';
+  String get extensionVerificationBrowserExternal => 'External';
 
   @override
-  String get extensionVerificationBrowserInApp => 'Dalam aplikasi';
+  String get extensionVerificationBrowserInApp => 'In-app';
 
   @override
   String get extensionVerificationHelpTitleManual =>
-      'Buka verifikasi secara manual';
+      'Open verification manually';
 
   @override
   String get extensionVerificationHelpTitleWaiting =>
-      'Verifikasi masih menunggu';
+      'Verification still waiting';
 
   @override
   String get extensionVerificationHelpMessageManual =>
-      'SpotiFLAC Mobile tidak dapat membuka browser secara otomatis. Buka tautan ini di browser Anda, atau salin secara manual.';
+      'SpotiFLAC Mobile could not open the browser automatically. Open this link in your browser, or copy it manually.';
 
   @override
   String get extensionVerificationHelpMessageWaiting =>
-      'Jika browser tidak terbuka, atau verifikasi selesai tetapi tidak kembali ke SpotiFLAC Mobile, buka tautan ini lagi atau salin secara manual.';
+      'If the browser did not open, or verification finished but did not return to SpotiFLAC Mobile, open this link again or copy it manually.';
 
   @override
-  String get extensionVerificationClose => 'Tutup';
+  String get extensionVerificationClose => 'Close';
 
   @override
-  String get extensionVerificationCopyLink => 'Salin tautan';
+  String get extensionVerificationCopyLink => 'Copy link';
 
   @override
-  String get extensionVerificationLinkCopied => 'Tautan verifikasi disalin';
+  String get extensionVerificationLinkCopied => 'Verification link copied';
 
   @override
-  String get extensionVerificationOpenBrowser => 'Buka browser';
+  String get extensionVerificationOpenBrowser => 'Open browser';
+
+  @override
+  String get settingsSearchHint => 'Cari pengaturan';
+
+  @override
+  String settingsSearchNoResults(String query) {
+    return 'Tidak ada pengaturan yang cocok dengan \"$query\"';
+  }
+
+  @override
+  String get settingsGroupInterface => 'Ekstensi & tampilan';
+
+  @override
+  String get settingsGroupContent => 'Konten & metadata';
+
+  @override
+  String get settingsGroupDownloads => 'Unduhan & file';
+
+  @override
+  String get settingsGroupSystem => 'Sistem';
+
+  @override
+  String get settingsGroupHelp => 'Tentang & dukungan';
 }

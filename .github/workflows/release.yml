@@ -47,15 +47,14 @@ jobs:
     steps:
       - name: Free disk space
         run: |
-          # Remove large unused tools (~15GB total)
+          # Remove large unused tools (~15GB total). Docker prune was dropped:
+          # it took 1-2 minutes and the rm below already frees enough.
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf /usr/share/swift
           sudo rm -rf /usr/local/.ghcup
-          # Clean docker images
-          sudo docker image prune --all --force
           # Show available space
           df -h
 
@@ -71,7 +70,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25.8"
+          go-version-file: go_backend/go.mod
           cache-dependency-path: go_backend/go.sum
 
       # Cache Gradle for faster builds
@@ -84,6 +83,12 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      - name: Cache Android NDK
+        uses: actions/cache@v5
+        with:
+          path: /usr/local/lib/android/sdk/ndk/29.0.14206865
+          key: ndk-29.0.14206865
+
       - name: Install Android SDK & NDK
         run: |
           # Use pre-installed Android SDK on GitHub runners
@@ -94,22 +99,29 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
           # Install NDK r29 (supports 16KB page size for Android 15+)
-          # Platform android-36 and build-tools 36.0.0 for targetSdk 36 (Android 16)
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;29.0.14206865" "platforms;android-36" "build-tools;36.0.0"
+          # Keep the installed platform aligned with compileSdk/targetSdk.
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;29.0.14206865" "platforms;android-37.0" "build-tools;37.0.0"
 
           # Set NDK path
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
 
       - name: Install gomobile
+        working-directory: go_backend
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
+          # Installed from inside the module so the go.mod-pinned x/mobile
+          # version is used (reproducible + covered by the setup-go cache).
+          go install golang.org/x/mobile/cmd/gomobile
           gomobile init
 
       - name: Build Go backend for Android
         working-directory: go_backend
         run: |
           mkdir -p ../android/app/libs
-          gomobile bind -target=android -androidapi 24 -o ../android/app/libs/gobackend.aar .
+          # arm/arm64 only: ndk.abiFilters in app/build.gradle.kts strips
+          # every other ABI from all outputs (universal APK included), so an
+          # amd64 slice would never reach a shipped APK — it only bloats the
+          # aar and slows this step.
+          gomobile bind -target=android/arm,android/arm64 -androidapi 24 -o ../android/app/libs/gobackend.aar .
         env:
           CGO_ENABLED: 1
 
@@ -117,7 +129,15 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
+          flutter-version-file: .fvmrc
           cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
 
       - name: Get Flutter dependencies
         run: flutter pub get
@@ -127,13 +147,11 @@ jobs:
 
       - name: Build APK (Release - unsigned)
         run: |
-          flutter build apk --release --split-per-abi || true
-          # Verify APKs were created
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64
           ls -la build/app/outputs/flutter-apk/
-          if [ ! -f "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" ]; then
-            echo "ERROR: APK not found!"
-            exit 1
-          fi
+          test -f build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 
       - name: Sign APKs
         uses: r0adkll/sign-android-release@v1
@@ -149,12 +167,29 @@ jobs:
 
       - name: Rename APKs
         run: |
-          VERSION=${{ needs.get-version.outputs.version }}
+          VERSION="${{ needs.get-version.outputs.version }}"
           cd build/app/outputs/flutter-apk
-          # Signed files have -signed suffix
-          mv app-arm64-v8a-release-signed.apk SpotiFLAC-${VERSION}-arm64.apk || mv app-arm64-v8a-release.apk SpotiFLAC-${VERSION}-arm64.apk || true
-          mv app-armeabi-v7a-release-signed.apk SpotiFLAC-${VERSION}-arm32.apk || mv app-armeabi-v7a-release.apk SpotiFLAC-${VERSION}-arm32.apk || true
-          mv app-release-signed.apk SpotiFLAC-${VERSION}-universal.apk || mv app-release.apk SpotiFLAC-${VERSION}-universal.apk || true
+
+          rename_required_apk() {
+            unsigned="$1"
+            destination="$2"
+            signed="${unsigned%.apk}-signed.apk"
+            if [ -f "$signed" ]; then
+              mv "$signed" "$destination"
+            elif [ -f "$unsigned" ]; then
+              mv "$unsigned" "$destination"
+            else
+              echo "ERROR: Missing APK: $unsigned"
+              exit 1
+            fi
+          }
+
+          rename_required_apk \
+            app-arm64-v8a-release.apk \
+            "SpotiFLAC-${VERSION}-arm64.apk"
+          rename_required_apk \
+            app-armeabi-v7a-release.apk \
+            "SpotiFLAC-${VERSION}-arm32.apk"
           ls -la
 
       - name: Upload APK artifact
@@ -179,7 +214,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25.8"
+          go-version-file: go_backend/go.mod
           cache-dependency-path: go_backend/go.sum
 
       # Cache CocoaPods
@@ -191,8 +226,10 @@ jobs:
           restore-keys: pods-${{ runner.os }}-
 
       - name: Install gomobile
+        working-directory: go_backend
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
+          # go.mod-pinned x/mobile version (reproducible + cached by setup-go).
+          go install golang.org/x/mobile/cmd/gomobile
           gomobile init
 
       - name: Build Go backend for iOS
@@ -210,8 +247,9 @@ jobs:
 
       - name: Add XCFramework to Xcode project
         run: |
-          # Install xcodeproj gem for modifying Xcode project
-          sudo gem install xcodeproj
+          # xcodeproj usually ships with the preinstalled CocoaPods; only
+          # install it when missing.
+          gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj
 
           # Create Ruby script to add framework
           cat > add_framework.rb << 'EOF'
@@ -252,7 +290,15 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
+          flutter-version-file: .fvmrc
           cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
 
       - name: Get Flutter dependencies
         run: flutter pub get
@@ -445,7 +491,7 @@ jobs:
 
           jq --arg ver "$VERSION_NUM" \
              --arg date "$DATE" \
-             --arg url "https://github.com/zarzet/SpotiFLAC-Mobile/releases/download/${VERSION}/SpotiFLAC-${VERSION}-ios-unsigned.ipa" \
+             --arg url "https://github.com/${{ github.repository }}/releases/download/${VERSION}/SpotiFLAC-${VERSION}-ios-unsigned.ipa" \
              --argjson size "$IPA_SIZE" \
              '.apps[0].version = $ver | .apps[0].versionDate = $date | .apps[0].downloadURL = $url | .apps[0].size = $size' \
              apps.json > apps.json.tmp && mv apps.json.tmp apps.json

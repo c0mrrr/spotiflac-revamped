@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class AppSettingsPage extends ConsumerWidget {
   const AppSettingsPage({super.key});
@@ -14,52 +13,13 @@ class AppSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
 
     return PopScope(
       canPop: true,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      context.l10n.settingsApp,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
-            ),
+            AppSliverHeader.page(title: context.l10n.settingsApp),
 
             SliverToBoxAdapter(
               child: SettingsSectionHeader(title: context.l10n.sectionApp),
@@ -82,6 +42,23 @@ class AppSettingsPage extends ConsumerWidget {
                         .read(settingsProvider.notifier)
                         .setExtensionVerificationBrowserMode(mode),
                   ),
+                  SettingsSwitchItem(
+                    icon: Icons.system_update,
+                    title: context.l10n.optionsCheckUpdates,
+                    subtitle: context.l10n.optionsCheckUpdatesSubtitle,
+                    value: settings.checkForUpdates,
+                    onChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setCheckForUpdates(v),
+                    showDivider: settings.checkForUpdates,
+                  ),
+                  if (settings.checkForUpdates)
+                    _UpdateChannelSelector(
+                      currentChannel: settings.updateChannel,
+                      onChanged: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setUpdateChannel(v),
+                    ),
                 ],
               ),
             ),
@@ -269,13 +246,108 @@ class AppSettingsPage extends ConsumerWidget {
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.snackbarError(e.toString()))),
+          SnackBar(
+            content: Text(context.l10n.snackbarError(context.friendlyError(e))),
+          ),
         );
       }
     }
   }
 }
 
+class _UpdateChannelSelector extends StatelessWidget {
+  final String currentChannel;
+  final ValueChanged<String> onChanged;
+  const _UpdateChannelSelector({
+    required this.currentChannel,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.new_releases,
+                color: colorScheme.onSurfaceVariant,
+                size: 24,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.l10n.optionsUpdateChannel,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      currentChannel == 'preview'
+                          ? context.l10n.optionsUpdateChannelPreview
+                          : context.l10n.optionsUpdateChannelStable,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              SettingsChoiceChip(
+                expand: true,
+                label: context.l10n.channelStable,
+                isSelected: currentChannel == 'stable',
+                onTap: () => onChanged('stable'),
+              ),
+              const SizedBox(width: 8),
+              SettingsChoiceChip(
+                expand: true,
+                label: context.l10n.channelPreview,
+                isSelected: currentChannel == 'preview',
+                onTap: () => onChanged('preview'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 16,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  context.l10n.optionsUpdateChannelWarning,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    return SettingsSearchTarget(
+      label: context.l10n.optionsUpdateChannel,
+      child: content,
+    );
+  }
+}
 
 class _VerificationBrowserModeSelector extends StatelessWidget {
   final String currentMode;
@@ -295,7 +367,7 @@ class _VerificationBrowserModeSelector extends StatelessWidget {
         ? 'external_first'
         : 'in_app_first';
 
-    return Column(
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
@@ -339,13 +411,15 @@ class _VerificationBrowserModeSelector extends StatelessWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  _ChannelChip(
+                  SettingsChoiceChip(
+                    expand: true,
                     label: context.l10n.extensionVerificationBrowserExternal,
                     isSelected: normalizedMode == 'external_first',
                     onTap: () => onChanged('external_first'),
                   ),
                   const SizedBox(width: 8),
-                  _ChannelChip(
+                  SettingsChoiceChip(
+                    expand: true,
                     label: context.l10n.extensionVerificationBrowserInApp,
                     isSelected: normalizedMode == 'in_app_first',
                     onTap: () => onChanged('in_app_first'),
@@ -364,52 +438,9 @@ class _VerificationBrowserModeSelector extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _ChannelChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _ChannelChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselectedColor = isDark
-        ? Color.alphaBlend(
-            Colors.white.withValues(alpha: 0.05),
-            colorScheme.surface,
-          )
-        : colorScheme.surfaceContainerHigh;
-    return Expanded(
-      child: Material(
-        color: isSelected ? colorScheme.primaryContainer : unselectedColor,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? colorScheme.onPrimaryContainer
-                      : colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SettingsSearchTarget(
+      label: context.l10n.extensionVerificationBrowserTitle,
+      child: content,
     );
   }
 }

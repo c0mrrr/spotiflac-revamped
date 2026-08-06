@@ -13,16 +13,18 @@ type NeteaseClient struct {
 	httpClient *http.Client
 }
 
+type neteaseSearchSong struct {
+	Name    string `json:"name"`
+	ID      int64  `json:"id"`
+	Artists []struct {
+		Name string `json:"name"`
+	} `json:"artists"`
+}
+
 type neteaseSearchResponse struct {
 	Result struct {
-		Songs []struct {
-			Name    string `json:"name"`
-			ID      int64  `json:"id"`
-			Artists []struct {
-				Name string `json:"name"`
-			} `json:"artists"`
-		} `json:"songs"`
-		SongCount int `json:"songCount"`
+		Songs     []neteaseSearchSong `json:"songs"`
+		SongCount int                 `json:"songCount"`
 	} `json:"result"`
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -55,7 +57,7 @@ func NewNeteaseClient() *NeteaseClient {
 func (c *NeteaseClient) SearchSong(trackName, artistName string) (int64, error) {
 	query := trackName + " " + artistName
 	if strings.TrimSpace(query) == "" {
-		return 0, fmt.Errorf("empty search query")
+		return 0, lyricsNotFoundErrorf("empty search query")
 	}
 
 	searchURL := "https://lyrics.paxsenix.org/netease/search"
@@ -81,7 +83,7 @@ func (c *NeteaseClient) SearchSong(trackName, artistName string) (int64, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("netease search returned HTTP %d", resp.StatusCode)
+		return 0, lyricsHTTPStatusError(resp.StatusCode, "netease search returned HTTP %d", resp.StatusCode)
 	}
 
 	var searchResp neteaseSearchResponse
@@ -97,14 +99,38 @@ func (c *NeteaseClient) SearchSong(trackName, artistName string) (int64, error) 
 		if message == "" {
 			message = "unexpected response code"
 		}
-		return 0, fmt.Errorf("netease search unavailable: code %d: %s", searchResp.Code, message)
+		return 0, lyricsServiceUnavailableErrorf("netease search unavailable: code %d: %s", searchResp.Code, message)
 	}
 
 	if searchResp.Result.SongCount == 0 || len(searchResp.Result.Songs) == 0 {
-		return 0, fmt.Errorf("no songs found on netease")
+		return 0, lyricsNotFoundErrorf("no songs found on netease")
 	}
 
-	return searchResp.Result.Songs[0].ID, nil
+	best := selectBestNeteaseSearchResult(searchResp.Result.Songs, trackName, artistName)
+	if best == nil || best.ID == 0 {
+		return 0, lyricsNotFoundErrorf("no matching songs found on netease")
+	}
+	return best.ID, nil
+}
+
+func selectBestNeteaseSearchResult(results []neteaseSearchSong, trackName, artistName string) *neteaseSearchSong {
+	best := selectBestLyricsCandidate(len(results), trackName, artistName, 0, func(i int) (string, string, float64, bool) {
+		result := &results[i]
+		artists := make([]string, 0, len(result.Artists))
+		for _, artist := range result.Artists {
+			if name := strings.TrimSpace(artist.Name); name != "" {
+				artists = append(artists, name)
+			}
+		}
+		candidateArtist := strings.Join(artists, ", ")
+		ok := lyricsSearchTitlesMatch(result.Name, trackName, false) &&
+			lyricsSearchArtistsMatch(candidateArtist, artistName)
+		return result.Name, candidateArtist, 0, ok
+	})
+	if best < 0 {
+		return nil
+	}
+	return &results[best]
 }
 
 func (c *NeteaseClient) FetchLyricsByID(songID int64, includeTranslation, includeRomanization bool) (string, error) {
@@ -131,7 +157,7 @@ func (c *NeteaseClient) FetchLyricsByID(songID int64, includeTranslation, includ
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("netease lyrics returned HTTP %d", resp.StatusCode)
+		return "", lyricsHTTPStatusError(resp.StatusCode, "netease lyrics returned HTTP %d", resp.StatusCode)
 	}
 
 	var lyricsResp neteaseLyricsResponse
@@ -140,7 +166,7 @@ func (c *NeteaseClient) FetchLyricsByID(songID int64, includeTranslation, includ
 	}
 
 	if lyricsResp.LRC == nil || strings.TrimSpace(lyricsResp.LRC.Lyric) == "" {
-		return "", fmt.Errorf("no lyrics available on netease")
+		return "", lyricsNotFoundErrorf("no lyrics available on netease")
 	}
 
 	lyric := lyricsResp.LRC.Lyric
@@ -173,36 +199,8 @@ func (c *NeteaseClient) FetchLyrics(
 		return nil, err
 	}
 
-	lines := parseSyncedLyrics(lrcText)
-	if len(lines) == 0 {
-		plainLines := strings.Split(lrcText, "\n")
-		for _, line := range plainLines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				lines = append(lines, LyricsLine{
-					StartTimeMs: 0,
-					Words:       trimmed,
-					EndTimeMs:   0,
-				})
-			}
-		}
-
-		if len(lines) == 0 {
-			return nil, fmt.Errorf("netease returned empty lyrics")
-		}
-
-		return &LyricsResponse{
-			Lines:    lines,
-			SyncType: "UNSYNCED",
-			Provider: "Netease",
-			Source:   "Netease",
-		}, nil
+	if resp := lyricsResponseFromLRCText(lrcText, "Netease", "Netease"); resp != nil {
+		return resp, nil
 	}
-
-	return &LyricsResponse{
-		Lines:    lines,
-		SyncType: "LINE_SYNCED",
-		Provider: "Netease",
-		Source:   "Netease",
-	}, nil
+	return nil, fmt.Errorf("netease returned empty lyrics")
 }

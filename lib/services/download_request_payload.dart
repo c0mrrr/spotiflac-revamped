@@ -48,6 +48,9 @@ class DownloadRequestPayload {
   final bool stageSafOutput;
   final bool deferSafPublish;
   final bool requiresContainerConversion;
+  final bool allowQualityVariant;
+  final String qualityVariant;
+  final bool qualityVariantCollisionOnly;
   final String songLinkRegion;
 
   const DownloadRequestPayload({
@@ -98,6 +101,9 @@ class DownloadRequestPayload {
     this.stageSafOutput = false,
     this.deferSafPublish = false,
     this.requiresContainerConversion = false,
+    this.allowQualityVariant = false,
+    this.qualityVariant = '',
+    this.qualityVariantCollisionOnly = false,
     this.songLinkRegion = 'US',
   });
 
@@ -150,6 +156,9 @@ class DownloadRequestPayload {
       'stage_saf_output': stageSafOutput,
       'defer_saf_publish': deferSafPublish,
       'requires_container_conversion': requiresContainerConversion,
+      'allow_quality_variant': allowQualityVariant,
+      'quality_variant': qualityVariant,
+      'quality_variant_collision_only': qualityVariantCollisionOnly,
       'songlink_region': songLinkRegion,
     };
   }
@@ -206,6 +215,9 @@ class DownloadRequestPayload {
       stageSafOutput: stageSafOutput,
       deferSafPublish: deferSafPublish,
       requiresContainerConversion: requiresContainerConversion,
+      allowQualityVariant: allowQualityVariant,
+      qualityVariant: qualityVariant,
+      qualityVariantCollisionOnly: qualityVariantCollisionOnly,
       songLinkRegion: songLinkRegion,
     );
   }

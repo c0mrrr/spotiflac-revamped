@@ -11,6 +11,7 @@ import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 import 'package:spotiflac_android/utils/local_library_scan_prefs.dart';
 import 'package:spotiflac_android/utils/path_match_keys.dart';
+import 'package:spotiflac_android/utils/progress_stream_poller.dart';
 
 final _log = AppLogger('LocalLibrary');
 
@@ -32,7 +33,6 @@ class LocalLibraryState {
   final int excludedDownloadedCount;
   final Set<String> _trackKeySet;
   final Set<String> _isrcSet;
-  final Map<String, String> _filePathById;
 
   LocalLibraryState({
     this.isScanning = false,
@@ -49,10 +49,8 @@ class LocalLibraryState {
     this.excludedDownloadedCount = 0,
     Set<String>? trackKeySet,
     Set<String>? isrcSet,
-    Map<String, String>? filePathById,
   }) : _trackKeySet = trackKeySet ?? const <String>{},
-       _isrcSet = isrcSet ?? const <String>{},
-       _filePathById = filePathById ?? const <String, String>{};
+       _isrcSet = isrcSet ?? const <String>{};
 
   bool hasIsrc(String isrc) => _isrcSet.contains(isrc);
 
@@ -60,8 +58,6 @@ class LocalLibraryState {
     final key = LibraryDatabase.matchKeyFor(trackName, artistName);
     return _trackKeySet.contains(key);
   }
-
-  String? filePathForId(String id) => _filePathById[id];
 
   bool existsInLibrary({String? isrc, String? trackName, String? artistName}) {
     if (isrc != null && isrc.isNotEmpty && hasIsrc(isrc)) {
@@ -88,7 +84,6 @@ class LocalLibraryState {
     int? excludedDownloadedCount,
     Set<String>? trackKeySet,
     Set<String>? isrcSet,
-    Map<String, String>? filePathById,
   }) {
     return LocalLibraryState(
       isScanning: isScanning ?? this.isScanning,
@@ -106,7 +101,6 @@ class LocalLibraryState {
           excludedDownloadedCount ?? this.excludedDownloadedCount,
       trackKeySet: trackKeySet ?? _trackKeySet,
       isrcSet: isrcSet ?? _isrcSet,
-      filePathById: filePathById ?? _filePathById,
     );
   }
 }
@@ -117,17 +111,26 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
   final NotificationService _notificationService = NotificationService();
   static const _progressPollingInterval = Duration(milliseconds: 350);
   static const _progressStreamBootstrapTimeout = Duration(milliseconds: 900);
-  Timer? _progressTimer;
-  Timer? _progressStreamBootstrapTimer;
-  StreamSubscription<Map<String, dynamic>>? _progressStreamSub;
+  late final ProgressStreamPoller<Map<String, dynamic>> _progressPoller =
+      ProgressStreamPoller<Map<String, dynamic>>(
+        streamProvider: PlatformBridge.libraryScanProgressStream,
+        pollProvider: PlatformBridge.getLibraryScanProgress,
+        onProgress: _handleLibraryScanProgress,
+        pollingInterval: _progressPollingInterval,
+        bootstrapTimeout: _progressStreamBootstrapTimeout,
+        onStreamProcessingError: (e) =>
+            _log.w('Library scan progress stream processing failed: $e'),
+        onStreamFailed: (error) => _log.w(
+          'Library scan progress stream failed, fallback to polling: $error',
+        ),
+        onStreamTimeout: () =>
+            _log.w('Library scan progress stream timeout, fallback to polling'),
+        onPollError: (e) => _log.w('Library scan progress polling failed: $e'),
+      );
   bool _isLoaded = false;
   bool _hasLoadedFromDatabase = false;
   Future<void>? _loadFuture;
   bool _scanCancelRequested = false;
-  int _progressPollingErrorCount = 0;
-  bool _isProgressPollingInFlight = false;
-  bool _hasReceivedProgressStreamEvent = false;
-  bool _usingProgressStream = false;
   static const _scanNotificationHeartbeat = Duration(seconds: 4);
   int _lastScanNotificationPercent = -1;
   int _lastScanNotificationTotalFiles = -1;
@@ -135,11 +138,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
 
   @override
   LocalLibraryState build() {
-    ref.onDispose(() {
-      _progressTimer?.cancel();
-      _progressStreamBootstrapTimer?.cancel();
-      _progressStreamSub?.cancel();
-    });
+    ref.onDispose(_progressPoller.stop);
 
     Future.microtask(_ensureLoadedFromDatabase);
     return LocalLibraryState();
@@ -184,7 +183,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
         excludedDownloadedCount: excludedDownloadedCount,
         trackKeySet: lookupIndex.matchKeys,
         isrcSet: lookupIndex.isrcs,
-        filePathById: lookupIndex.filePathById,
       );
       _log.i(
         'Loaded local library summary: $count items, lastScannedAt: '
@@ -221,7 +219,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       excludedDownloadedCount: excludedDownloadedCount,
       trackKeySet: index.matchKeys,
       isrcSet: index.isrcs,
-      filePathById: index.filePathById,
     );
     _hasLoadedFromDatabase = true;
     _isLoaded = true;
@@ -584,106 +581,14 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
   }
 
   void _startProgressPolling() {
-    _progressTimer?.cancel();
-    _progressStreamBootstrapTimer?.cancel();
-    _progressStreamBootstrapTimer = null;
-    _progressStreamSub?.cancel();
-    _progressStreamSub = null;
-    _hasReceivedProgressStreamEvent = false;
-    _usingProgressStream = false;
-
-    if (Platform.isAndroid || Platform.isIOS) {
-      _progressStreamSub = PlatformBridge.libraryScanProgressStream().listen(
-        (progress) async {
-          _hasReceivedProgressStreamEvent = true;
-          _usingProgressStream = true;
-          _progressStreamBootstrapTimer?.cancel();
-          _progressStreamBootstrapTimer = null;
-          if (_isProgressPollingInFlight) return;
-          _isProgressPollingInFlight = true;
-          try {
-            await _handleLibraryScanProgress(progress);
-            _progressPollingErrorCount = 0;
-          } catch (e) {
-            _progressPollingErrorCount++;
-            if (_progressPollingErrorCount <= 3) {
-              _log.w('Library scan progress stream processing failed: $e');
-            }
-          } finally {
-            _isProgressPollingInFlight = false;
-          }
-        },
-        onError: (Object error, StackTrace stackTrace) {
-          if (_usingProgressStream) {
-            _log.w(
-              'Library scan progress stream failed, fallback to polling: $error',
-            );
-          }
-          _progressStreamSub?.cancel();
-          _progressStreamSub = null;
-          _usingProgressStream = false;
-          _progressStreamBootstrapTimer?.cancel();
-          _progressStreamBootstrapTimer = null;
-          _startProgressPollingTimer();
-        },
-        cancelOnError: false,
+    final useStream = Platform.isAndroid || Platform.isIOS;
+    _progressPoller.start(useStream: useStream);
+    if (useStream) {
+      Future<void>.microtask(
+        () => _progressPoller.pollOnce(
+          (e) => _log.w('Initial library scan progress fetch failed: $e'),
+        ),
       );
-
-      Future<void>.microtask(_requestProgressSnapshot);
-
-      _progressStreamBootstrapTimer = Timer(
-        _progressStreamBootstrapTimeout,
-        () {
-          if (_hasReceivedProgressStreamEvent) {
-            return;
-          }
-          _log.w('Library scan progress stream timeout, fallback to polling');
-          _progressStreamSub?.cancel();
-          _progressStreamSub = null;
-          _usingProgressStream = false;
-          _startProgressPollingTimer();
-        },
-      );
-      return;
-    }
-
-    _startProgressPollingTimer();
-  }
-
-  void _startProgressPollingTimer() {
-    _progressTimer?.cancel();
-    _progressTimer = Timer.periodic(_progressPollingInterval, (_) async {
-      if (_isProgressPollingInFlight) return;
-      _isProgressPollingInFlight = true;
-      try {
-        final progress = await PlatformBridge.getLibraryScanProgress();
-        await _handleLibraryScanProgress(progress);
-        _progressPollingErrorCount = 0;
-      } catch (e) {
-        _progressPollingErrorCount++;
-        if (_progressPollingErrorCount <= 3) {
-          _log.w('Library scan progress polling failed: $e');
-        }
-      } finally {
-        _isProgressPollingInFlight = false;
-      }
-    });
-  }
-
-  Future<void> _requestProgressSnapshot() async {
-    if (_isProgressPollingInFlight) return;
-    _isProgressPollingInFlight = true;
-    try {
-      final progress = await PlatformBridge.getLibraryScanProgress();
-      await _handleLibraryScanProgress(progress);
-      _progressPollingErrorCount = 0;
-    } catch (e) {
-      _progressPollingErrorCount++;
-      if (_progressPollingErrorCount <= 3) {
-        _log.w('Initial library scan progress fetch failed: $e');
-      }
-    } finally {
-      _isProgressPollingInFlight = false;
     }
   }
 
@@ -740,16 +645,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
   }
 
   void _stopProgressPolling() {
-    _progressTimer?.cancel();
-    _progressStreamBootstrapTimer?.cancel();
-    _progressStreamSub?.cancel();
-    _progressTimer = null;
-    _progressStreamBootstrapTimer = null;
-    _progressStreamSub = null;
-    _progressPollingErrorCount = 0;
-    _isProgressPollingInFlight = false;
-    _hasReceivedProgressStreamEvent = false;
-    _usingProgressStream = false;
+    _progressPoller.stop();
     _resetScanNotificationTracking();
   }
 
@@ -952,14 +848,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
     await _refreshSummaryFromStorage();
   }
 
-  bool existsInLibrary({String? isrc, String? trackName, String? artistName}) {
-    return state.existsInLibrary(
-      isrc: isrc,
-      trackName: trackName,
-      artistName: artistName,
-    );
-  }
-
   Future<LocalLibraryItem?> getById(String id) async {
     final json = await _db.getById(id);
     return json == null ? null : LocalLibraryItem.fromJson(json);
@@ -996,17 +884,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       return findByTrackAndArtistAsync(trackName, artistName);
     }
     return null;
-  }
-
-  Future<List<LocalLibraryItem>> search(String query) async {
-    if (query.isEmpty) return [];
-
-    final results = await _db.search(query);
-    return results.map((e) => LocalLibraryItem.fromJson(e)).toList();
-  }
-
-  Future<int> getCount() async {
-    return await _db.getCount();
   }
 
   Future<Map<String, int>> _backfillLegacyFileModTimes({
@@ -1087,59 +964,6 @@ final localLibraryProvider =
       LocalLibraryNotifier.new,
     );
 
-final localLibrarySummaryProvider = Provider<LocalLibraryState>((ref) {
-  return ref.watch(localLibraryProvider);
-});
-
-class LocalLibraryLookup {
-  final LibraryDatabase _db;
-
-  const LocalLibraryLookup(this._db);
-
-  Future<LocalLibraryItem?> byId(String id) async {
-    final json = await _db.getById(id);
-    return json == null ? null : LocalLibraryItem.fromJson(json);
-  }
-
-  Future<LocalLibraryItem?> byIsrc(String isrc) async {
-    final json = await _db.getByIsrc(isrc);
-    return json == null ? null : LocalLibraryItem.fromJson(json);
-  }
-
-  Future<LocalLibraryItem?> byTrackAndArtist(
-    String trackName,
-    String artistName,
-  ) async {
-    final json = await _db.findFirstByTrackAndArtist(trackName, artistName);
-    return json == null ? null : LocalLibraryItem.fromJson(json);
-  }
-
-  Future<LocalLibraryItem?> existing({
-    String? id,
-    String? isrc,
-    String? trackName,
-    String? artistName,
-  }) async {
-    if (id != null && id.isNotEmpty) {
-      final item = await byId(id);
-      if (item != null) return item;
-    }
-    if (isrc != null && isrc.isNotEmpty) {
-      final item = await byIsrc(isrc);
-      if (item != null) return item;
-    }
-    if (trackName != null && artistName != null) {
-      return byTrackAndArtist(trackName, artistName);
-    }
-    return null;
-  }
-}
-
-final localLibraryLookupProvider = Provider<LocalLibraryLookup>((ref) {
-  ref.watch(localLibraryProvider.select((state) => state.loadedIndexVersion));
-  return LocalLibraryLookup(LibraryDatabase.instance);
-});
-
 class LocalLibraryCoverRequest {
   final String? isrc;
   final String trackName;
@@ -1188,8 +1012,8 @@ String? _nonEmptyCoverPath(Map<String, dynamic>? json) {
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
 
-final localLibraryCoverProvider =
-    FutureProvider.family<String?, LocalLibraryCoverRequest>((ref, request) {
+final localLibraryCoverProvider = FutureProvider.autoDispose
+    .family<String?, LocalLibraryCoverRequest>((ref, request) {
       ref.watch(
         localLibraryProvider.select((state) => state.loadedIndexVersion),
       );
@@ -1202,104 +1026,22 @@ final localLibraryCoverProvider =
           .then(_nonEmptyCoverPath);
     });
 
-final localLibraryFirstCoverProvider =
-    FutureProvider.family<String?, LocalLibraryCoverBatchRequest>((
-      ref,
-      request,
-    ) async {
+final localLibraryFirstCoverProvider = FutureProvider.autoDispose
+    .family<String?, LocalLibraryCoverBatchRequest>((ref, request) async {
       ref.watch(
         localLibraryProvider.select((state) => state.loadedIndexVersion),
       );
-      for (final track in request.tracks) {
-        final cover = _nonEmptyCoverPath(
-          await LibraryDatabase.instance.findExisting(
+      final rows = await LibraryDatabase.instance.findExistingBatch([
+        for (final track in request.tracks)
+          LocalLibraryBatchLookupRequest(
             isrc: track.isrc,
             trackName: track.trackName,
             artistName: track.artistName,
           ),
-        );
+      ]);
+      for (final row in rows) {
+        final cover = _nonEmptyCoverPath(row);
         if (cover != null) return cover;
       }
       return null;
-    });
-
-final localLibraryPageProvider =
-    FutureProvider.family<List<LocalLibraryItem>, LocalLibraryPageRequest>((
-      ref,
-      request,
-    ) async {
-      ref.watch(
-        localLibraryProvider.select((state) => state.loadedIndexVersion),
-      );
-      final rows = await LibraryDatabase.instance.getPage(request);
-      return rows.map(LocalLibraryItem.fromJson).toList(growable: false);
-    });
-
-final localLibraryPageCountProvider =
-    FutureProvider.family<int, LocalLibraryPageRequest>((ref, request) async {
-      ref.watch(
-        localLibraryProvider.select((state) => state.loadedIndexVersion),
-      );
-      return LibraryDatabase.instance.getPageCount(request);
-    });
-
-class LocalLibraryAlbumPageRequest {
-  final int limit;
-  final int offset;
-  final LocalLibraryFilterMode filterMode;
-  final LocalLibrarySortMode sortMode;
-  final String? searchQuery;
-
-  const LocalLibraryAlbumPageRequest({
-    this.limit = 100,
-    this.offset = 0,
-    this.filterMode = LocalLibraryFilterMode.albums,
-    this.sortMode = LocalLibrarySortMode.album,
-    this.searchQuery,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return other is LocalLibraryAlbumPageRequest &&
-        other.limit == limit &&
-        other.offset == offset &&
-        other.filterMode == filterMode &&
-        other.sortMode == sortMode &&
-        other.searchQuery == searchQuery;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(limit, offset, filterMode, sortMode, searchQuery);
-}
-
-final localLibraryAlbumPageProvider =
-    FutureProvider.family<
-      List<LocalLibraryAlbumGroup>,
-      LocalLibraryAlbumPageRequest
-    >((ref, request) async {
-      ref.watch(
-        localLibraryProvider.select((state) => state.loadedIndexVersion),
-      );
-      return LibraryDatabase.instance.getAlbumPage(
-        limit: request.limit,
-        offset: request.offset,
-        filterMode: request.filterMode,
-        sortMode: request.sortMode,
-        searchQuery: request.searchQuery,
-      );
-    });
-
-final localLibraryAlbumCountProvider =
-    FutureProvider.family<int, LocalLibraryAlbumPageRequest>((
-      ref,
-      request,
-    ) async {
-      ref.watch(
-        localLibraryProvider.select((state) => state.loadedIndexVersion),
-      );
-      return LibraryDatabase.instance.getAlbumCount(
-        filterMode: request.filterMode,
-        searchQuery: request.searchQuery,
-      );
     });

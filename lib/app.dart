@@ -11,22 +11,29 @@ import 'package:spotiflac_android/services/app_navigation_service.dart';
 import 'package:spotiflac_android/theme/dynamic_color_wrapper.dart';
 import 'package:spotiflac_android/l10n/app_localizations.dart';
 
+String initialLocationForAppState({
+  required bool isFirstLaunch,
+  required bool hasCompletedTutorial,
+}) {
+  if (isFirstLaunch) return '/setup';
+  if (!hasCompletedTutorial) return '/tutorial';
+  return '/';
+}
+
 final _routerProvider = Provider<GoRouter>((ref) {
-  final isFirstLaunch = ref.watch(
-    settingsProvider.select((s) => s.isFirstLaunch),
-  );
-  final hasCompletedTutorial = ref.watch(
-    settingsProvider.select((s) => s.hasCompletedTutorial),
+  final routingSettings = ref.watch(
+    settingsProvider.select(
+      (settings) => (
+        isFirstLaunch: settings.isFirstLaunch,
+        hasCompletedTutorial: settings.hasCompletedTutorial,
+      ),
+    ),
   );
 
-  String initialLocation;
-  if (isFirstLaunch) {
-    initialLocation = '/setup';
-  } else if (!hasCompletedTutorial) {
-    initialLocation = '/tutorial';
-  } else {
-    initialLocation = '/';
-  }
+  final initialLocation = initialLocationForAppState(
+    isFirstLaunch: routingSettings.isFirstLaunch,
+    hasCompletedTutorial: routingSettings.hasCompletedTutorial,
+  );
 
   return GoRouter(
     navigatorKey: AppNavigationService.rootNavigatorKey,
@@ -78,6 +85,75 @@ Locale _resolveSupportedLocale(
   return _fallbackLocale(supportedLocales);
 }
 
+/// iOS-style fluid scroll everywhere: momentum glide + bounce instead of the
+/// Android clamping stop. Widgets that set explicit physics (queue filter
+/// PageView, bottom sheets) are unaffected.
+class _FluidScrollBehavior extends MaterialScrollBehavior {
+  const _FluidScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+}
+
+/// Fades the app content in after an orientation change or a width change
+/// across the shell's rail breakpoint (fold/unfold, split-screen resize) —
+/// Flutter reflows the layout in a single frame, so without this the new
+/// layout pops in.
+class _OrientationFade extends StatefulWidget {
+  final Widget child;
+
+  const _OrientationFade({required this.child});
+
+  @override
+  State<_OrientationFade> createState() => _OrientationFadeState();
+}
+
+class _OrientationFadeState extends State<_OrientationFade>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    value: 1,
+  );
+  // Matches the shell's NavigationRail breakpoint.
+  static const double _railBreakpoint = 600;
+
+  Orientation? _lastOrientation;
+  double? _lastWidth;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final orientation = MediaQuery.orientationOf(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final orientationChanged =
+        _lastOrientation != null && orientation != _lastOrientation;
+    final crossedRailBreakpoint =
+        _lastWidth != null &&
+        (_lastWidth! < _railBreakpoint) != (width < _railBreakpoint);
+    if (orientationChanged || crossedRailBreakpoint) {
+      _controller.forward(from: 0);
+    }
+    _lastOrientation = orientation;
+    _lastWidth = width;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      child: widget.child,
+    );
+  }
+}
+
 class SpotiFLACApp extends ConsumerWidget {
   final bool disableOverscrollEffects;
 
@@ -87,9 +163,12 @@ class SpotiFLACApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(_routerProvider);
     final localeString = ref.watch(settingsProvider.select((s) => s.locale));
+    final heroAnimationsEnabled = ref.watch(
+      settingsProvider.select((s) => s.heroAnimationsEnabled),
+    );
     final scrollBehavior = disableOverscrollEffects
         ? const MaterialScrollBehavior().copyWith(overscroll: false)
-        : null;
+        : const _FluidScrollBehavior();
 
     Locale? locale;
     if (localeString != 'system' && localeString.isNotEmpty) {
@@ -120,9 +199,18 @@ class SpotiFLACApp extends ConsumerWidget {
           // dialogs stay centered on large/foldable devices.
           builder: (context, child) {
             final mediaQuery = MediaQuery.of(context);
+            final appContent = _OrientationFade(
+              child: child ?? const SizedBox.shrink(),
+            );
             return MediaQuery(
               data: mediaQuery.copyWith(displayFeatures: const []),
-              child: child ?? const SizedBox.shrink(),
+              // HeroMode only affects heroes below a *route* subtree. At this
+              // level it sits above the router's Navigator, so the controller
+              // never encounters it while collecting heroes. Removing the
+              // inherited controller disables flights on the root Navigator.
+              child: heroAnimationsEnabled
+                  ? appContent
+                  : HeroControllerScope.none(child: appContent),
             );
           },
           routerConfig: router,

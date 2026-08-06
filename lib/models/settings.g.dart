@@ -19,6 +19,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   artistTagMode: json['artistTagMode'] as String? ?? artistTagModeJoined,
   embedLyrics: json['embedLyrics'] as bool? ?? true,
   embedReplayGain: json['embedReplayGain'] as bool? ?? false,
+  playbackNormalization: json['playbackNormalization'] as bool? ?? false,
   maxQualityCover: json['maxQualityCover'] as bool? ?? true,
   isFirstLaunch: json['isFirstLaunch'] as bool? ?? true,
   checkForUpdates: json['checkForUpdates'] as bool? ?? true,
@@ -32,6 +33,10 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       json['filterContributingArtistsInAlbumArtist'] as bool? ?? false,
   historyViewMode: json['historyViewMode'] as String? ?? 'grid',
   historyFilterMode: json['historyFilterMode'] as String? ?? 'all',
+  defaultLibraryView: json['defaultLibraryView'] as String? ?? 'last',
+  libraryQualityLabelMode:
+      json['libraryQualityLabelMode'] as String? ??
+      AppSettings.libraryQualityLabelBitrate,
   askQualityBeforeDownload: json['askQualityBeforeDownload'] as bool? ?? true,
   enableLogging: json['enableLogging'] as bool? ?? false,
   useExtensionProviders: json['useExtensionProviders'] as bool? ?? true,
@@ -48,6 +53,8 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   albumFolderStructure:
       json['albumFolderStructure'] as String? ?? 'artist_album',
   showExtensionStore: json['showExtensionStore'] as bool? ?? true,
+  heroAnimationsEnabled: json['heroAnimationsEnabled'] as bool? ?? true,
+  forceBackdropBlur: json['forceBackdropBlur'] as bool? ?? false,
   extensionVerificationBrowserMode:
       json['extensionVerificationBrowserMode'] as String? ?? 'in_app_first',
   locale: json['locale'] as String? ?? 'system',
@@ -62,6 +69,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   songLinkRegion: json['songLinkRegion'] as String? ?? 'US',
   nativeDownloadWorkerEnabled:
       json['nativeDownloadWorkerEnabled'] as bool? ?? false,
+  concurrentDownloads: (json['concurrentDownloads'] as num?)?.toInt() ?? 1,
   localLibraryEnabled: json['localLibraryEnabled'] as bool? ?? false,
   localLibraryPath: json['localLibraryPath'] as String? ?? '',
   localLibraryBookmark: json['localLibraryBookmark'] as String? ?? '',
@@ -84,6 +92,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   musixmatchLanguage: json['musixmatchLanguage'] as String? ?? '',
   lastSeenVersion: json['lastSeenVersion'] as String? ?? '',
   deduplicateDownloads: json['deduplicateDownloads'] as bool? ?? true,
+  allowQualityVariants: json['allowQualityVariants'] as bool? ?? false,
   saveDownloadHistory: json['saveDownloadHistory'] as bool? ?? true,
   playerMode: json['playerMode'] as String? ?? 'external',
 );
@@ -103,6 +112,7 @@ Map<String, dynamic> _$AppSettingsToJson(
   'artistTagMode': instance.artistTagMode,
   'embedLyrics': instance.embedLyrics,
   'embedReplayGain': instance.embedReplayGain,
+  'playbackNormalization': instance.playbackNormalization,
   'maxQualityCover': instance.maxQualityCover,
   'isFirstLaunch': instance.isFirstLaunch,
   'checkForUpdates': instance.checkForUpdates,
@@ -116,6 +126,8 @@ Map<String, dynamic> _$AppSettingsToJson(
       instance.filterContributingArtistsInAlbumArtist,
   'historyViewMode': instance.historyViewMode,
   'historyFilterMode': instance.historyFilterMode,
+  'defaultLibraryView': instance.defaultLibraryView,
+  'libraryQualityLabelMode': instance.libraryQualityLabelMode,
   'askQualityBeforeDownload': instance.askQualityBeforeDownload,
   'enableLogging': instance.enableLogging,
   'useExtensionProviders': instance.useExtensionProviders,
@@ -127,6 +139,8 @@ Map<String, dynamic> _$AppSettingsToJson(
   'singleFilenameFormat': instance.singleFilenameFormat,
   'albumFolderStructure': instance.albumFolderStructure,
   'showExtensionStore': instance.showExtensionStore,
+  'heroAnimationsEnabled': instance.heroAnimationsEnabled,
+  'forceBackdropBlur': instance.forceBackdropBlur,
   'extensionVerificationBrowserMode': instance.extensionVerificationBrowserMode,
   'locale': instance.locale,
   'lyricsMode': instance.lyricsMode,
@@ -138,6 +152,7 @@ Map<String, dynamic> _$AppSettingsToJson(
   'allowLocalNetwork': instance.allowLocalNetwork,
   'songLinkRegion': instance.songLinkRegion,
   'nativeDownloadWorkerEnabled': instance.nativeDownloadWorkerEnabled,
+  'concurrentDownloads': instance.concurrentDownloads,
   'localLibraryEnabled': instance.localLibraryEnabled,
   'localLibraryPath': instance.localLibraryPath,
   'localLibraryBookmark': instance.localLibraryBookmark,
@@ -152,6 +167,7 @@ Map<String, dynamic> _$AppSettingsToJson(
   'musixmatchLanguage': instance.musixmatchLanguage,
   'lastSeenVersion': instance.lastSeenVersion,
   'deduplicateDownloads': instance.deduplicateDownloads,
+  'allowQualityVariants': instance.allowQualityVariants,
   'saveDownloadHistory': instance.saveDownloadHistory,
   'playerMode': instance.playerMode,
 };

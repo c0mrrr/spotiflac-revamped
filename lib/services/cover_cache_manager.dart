@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -6,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 /// Persistent cache manager for album/track cover images.
-/// 
+///
 /// Unlike the default cache manager which stores in temp directory
 /// (can be cleared by system anytime), this stores in app support
 /// directory which persists across app restarts.
@@ -14,14 +15,22 @@ class CoverCacheManager {
   static const String _cacheKey = 'coverImageCache';
   static const int _maxCacheObjects = 1000;
   static const Duration _maxCacheAge = Duration(days: 365);
+  // flutter_cache_manager only caps object count, not bytes; hi-res covers
+  // run 300KB-1.5MB each, so 1000 objects can mean hundreds of MB on a
+  // storage-starved device. Sweep oldest files past the byte cap on init.
+  static const int _maxCacheBytes = 150 << 20;
+  static const int _sweepTargetBytes = 120 << 20;
 
   static CacheManager? _instance;
   static bool _initialized = false;
+  static bool _maintenanceScheduled = false;
   static String? _cachePath;
 
   static CacheManager get instance {
     if (!_initialized || _instance == null) {
-      debugPrint('CoverCacheManager: Not initialized, using DefaultCacheManager');
+      debugPrint(
+        'CoverCacheManager: Not initialized, using DefaultCacheManager',
+      );
       return DefaultCacheManager();
     }
     return _instance!;
@@ -46,6 +55,56 @@ class CoverCacheManager {
       debugPrint('CoverCacheManager: Initialized successfully');
     } catch (e) {
       debugPrint('CoverCacheManager: Failed to initialize: $e');
+    }
+  }
+
+  /// Runs byte-cap maintenance after startup work has settled. Calling this
+  /// repeatedly is cheap; only the first call schedules a sweep.
+  static void scheduleMaintenance({
+    Duration delay = const Duration(seconds: 20),
+  }) {
+    if (_maintenanceScheduled) return;
+    _maintenanceScheduled = true;
+    unawaited(
+      Future<void>.delayed(delay).then((_) async {
+        final cachePath = _cachePath;
+        if (cachePath != null) await _sweepOverByteCap(cachePath);
+      }),
+    );
+  }
+
+  /// Deletes oldest cover files until the cache is back under
+  /// [_sweepTargetBytes]. Stale JSON repo entries self-heal: a missing file
+  /// is a cache miss and gets re-downloaded on demand.
+  static Future<void> _sweepOverByteCap(String cachePath) async {
+    try {
+      final dir = Directory(cachePath);
+      if (!await dir.exists()) return;
+
+      final files = <File>[];
+      var totalSize = 0;
+      await for (final entity in dir.list(recursive: true)) {
+        if (entity is File && !entity.path.endsWith('.json')) {
+          files.add(entity);
+          totalSize += await entity.length();
+        }
+      }
+      if (totalSize <= _maxCacheBytes) return;
+
+      final stats = <File, FileStat>{
+        for (final file in files) file: await file.stat(),
+      };
+      files.sort((a, b) => stats[a]!.modified.compareTo(stats[b]!.modified));
+      for (final file in files) {
+        if (totalSize <= _sweepTargetBytes) break;
+        try {
+          totalSize -= stats[file]!.size;
+          await file.delete();
+        } catch (_) {}
+      }
+      debugPrint('CoverCacheManager: Swept cover cache over byte cap');
+    } catch (e) {
+      debugPrint('CoverCacheManager: Byte-cap sweep failed: $e');
     }
   }
 
@@ -91,7 +150,7 @@ class CoverCacheManager {
     }
 
     final cacheDir = Directory(_cachePath!);
-    
+
     if (!await cacheDir.exists()) {
       return const CacheStats(fileCount: 0, totalSizeBytes: 0);
     }
@@ -156,10 +215,7 @@ class CacheStats {
   final int fileCount;
   final int totalSizeBytes;
 
-  const CacheStats({
-    required this.fileCount,
-    required this.totalSizeBytes,
-  });
+  const CacheStats({required this.fileCount, required this.totalSizeBytes});
 
   String get formattedSize {
     if (totalSizeBytes < 1024) {

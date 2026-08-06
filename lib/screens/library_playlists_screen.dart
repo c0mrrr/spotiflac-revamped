@@ -9,7 +9,7 @@ import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/screens/library_tracks_folder_screen.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/widgets/bottom_sheet_option_tile.dart';
+
 import 'package:spotiflac_android/utils/app_bar_layout.dart';
 import 'package:spotiflac_android/utils/nav_bar_inset.dart';
 
@@ -88,7 +88,7 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        context.l10n.collectionNoPlaylistsSubtitle,
+                        'No playlists found',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
@@ -215,9 +215,9 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
               color: colorScheme.outlineVariant.withValues(alpha: 0.5),
             ),
 
-            BottomSheetOptionTile(
-              icon: Icons.edit_outlined,
-              title: context.l10n.collectionRenamePlaylist,
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(context.l10n.collectionRenamePlaylist),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _showRenamePlaylistDialog(
@@ -229,19 +229,19 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
               },
             ),
 
-            BottomSheetOptionTile(
-              icon: Icons.image_outlined,
-              title: context.l10n.collectionPlaylistChangeCover,
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Change Cover'),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _pickCoverImage(context, ref, playlist.id);
               },
             ),
 
-            BottomSheetOptionTile(
-              icon: Icons.delete_outline,
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
               iconColor: colorScheme.error,
-              title: context.l10n.collectionDeletePlaylist,
+              title: Text(context.l10n.collectionDeletePlaylist),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _confirmDeletePlaylist(
@@ -435,7 +435,7 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.collectionPlaylistCreated)),
+      const SnackBar(content: Text('Playlist created')),
     );
   }
 
@@ -516,9 +516,7 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(dialogContext.l10n.collectionDeletePlaylist),
-          content: Text(
-            dialogContext.l10n.collectionDeletePlaylistMessage(playlistName),
-          ),
+          content: const Text('Delete playlist?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -541,7 +539,7 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.collectionPlaylistDeleted)),
+      const SnackBar(content: Text('Playlist deleted')),
     );
   }
 }

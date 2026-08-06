@@ -1,15 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
-import 'package:spotiflac_android/providers/store_provider.dart';
+import 'package:spotiflac_android/providers/repo_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/extension_auth_launcher.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class ExtensionDetailPage extends ConsumerStatefulWidget {
   final String extensionId;
@@ -82,7 +81,6 @@ class _ExtensionDetailPageState extends ConsumerState<ExtensionDetailPage> {
     );
 
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
     final hasError = extension.status == 'error';
     final healthStatus = extState.healthStatuses[extension.id];
 
@@ -91,45 +89,7 @@ class _ExtensionDetailPageState extends ConsumerState<ExtensionDetailPage> {
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      extension.displayName,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
-            ),
+            AppSliverHeader.page(title: extension.displayName),
 
             SliverToBoxAdapter(
               child: Padding(
@@ -244,7 +204,10 @@ class _ExtensionDetailPageState extends ConsumerState<ExtensionDetailPage> {
                       if (hasError && extension.errorMessage != null)
                         _InfoRow(
                           label: context.l10n.extensionError,
-                          value: extension.errorMessage!,
+                          value: context.friendlyError(
+                            extension.errorMessage,
+                            fallback: context.l10n.extensionsErrorLoading,
+                          ),
                           isError: true,
                         ),
                     ],
@@ -553,7 +516,7 @@ class _ExtensionDetailPageState extends ConsumerState<ExtensionDetailPage> {
           .read(extensionProvider.notifier)
           .removeExtension(widget.extensionId);
       if (success && mounted) {
-        ref.read(storeProvider.notifier).refresh();
+        ref.read(repoProvider.notifier).refresh();
         Navigator.pop(this.context);
       }
     }
@@ -845,7 +808,10 @@ class _HealthCheckItem extends StatelessWidget {
       if (check.required) context.l10n.extensionHealthRequired,
     ];
     final message = check.error?.trim().isNotEmpty == true
-        ? check.error!
+        ? context.friendlyError(
+            check.error,
+            fallback: context.l10n.extensionHealthServiceUnknown,
+          )
         : check.message;
 
     return Column(
@@ -1155,9 +1121,16 @@ class _SettingItemState extends State<_SettingItem> {
               payload['error'] as String? ??
               result['error'] as String? ??
               context.l10n.extensionActionFailed;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(error)));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.friendlyError(
+                  error,
+                  fallback: context.l10n.extensionActionFailed,
+                ),
+              ),
+            ),
+          );
         } else {
           if (widget.onActionPayload != null) {
             await widget.onActionPayload!(payload);
@@ -1165,9 +1138,9 @@ class _SettingItemState extends State<_SettingItem> {
           final openAuth = payload['open_auth_url'] as String?;
           if (openAuth != null && openAuth.isNotEmpty) {
             final uri = Uri.parse(openAuth);
-            final launched = await launchUrl(
+            final launched = await launchExtensionAuthUrl(
               uri,
-              mode: LaunchMode.externalApplication,
+              browserMode: 'external_first',
             );
             if (!launched && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1190,7 +1163,9 @@ class _SettingItemState extends State<_SettingItem> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.snackbarError(e.toString()))),
+          SnackBar(
+            content: Text(context.l10n.snackbarError(context.friendlyError(e))),
+          ),
         );
       }
     } finally {

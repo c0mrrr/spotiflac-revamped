@@ -1,7 +1,6 @@
 package gobackend
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"os"
@@ -21,9 +20,6 @@ func TestLyricsExportWrappersWithoutNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if jsonText, err := FetchLyrics("spotify-1", "Song Instrumental", "Artist", 180000); err != nil || !strings.Contains(jsonText, `"instrumental":true`) {
-		t.Fatalf("FetchLyrics instrumental = %q/%v", jsonText, err)
-	}
 	if lrc, err := GetLyricsLRC("spotify-1", "Song Instrumental", "Artist", "", 180000); err != nil || lrc != "[instrumental:true]" {
 		t.Fatalf("GetLyricsLRC instrumental = %q/%v", lrc, err)
 	}
@@ -52,16 +48,42 @@ func TestLyricsExportWrappersWithoutNetwork(t *testing.T) {
 	}
 }
 
+func TestLyricsExportWrappersRejectMetadataOnlySidecar(t *testing.T) {
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "metadata-only.mp3")
+	if err := os.WriteFile(audioPath, []byte("audio"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	metadataOnly := "[ti:Title]\n[ar:Artist]\n[al:Album]\n[by:SpotiFLAC Mobile]"
+	if err := os.WriteFile(filepath.Join(dir, "metadata-only.lrc"), []byte(metadataOnly), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if rawLyricsHasUsableContent(metadataOnly) {
+		t.Fatal("metadata-only LRC must not be considered usable")
+	}
+	if !rawLyricsHasUsableContent("[00:01.00]Actual lyric") {
+		t.Fatal("timed lyric must be considered usable")
+	}
+	if !rawLyricsHasUsableContent("[instrumental:true]") {
+		t.Fatal("instrumental marker must be considered usable")
+	}
+
+	if lrc, err := GetLyricsLRC("", "", "", audioPath, 0); err != nil || lrc != "" {
+		t.Fatalf("GetLyricsLRC metadata-only sidecar = %q/%v", lrc, err)
+	}
+	if jsonText, err := GetLyricsLRCWithSource("", "", "", audioPath, 0); err != nil ||
+		!strings.Contains(jsonText, `"lyrics":""`) || strings.Contains(jsonText, `"source":"Embedded"`) {
+		t.Fatalf("GetLyricsLRCWithSource metadata-only sidecar = %q/%v", jsonText, err)
+	}
+}
+
 func TestSongLinkExportWrappersWithFakeClient(t *testing.T) {
 	origClient := globalSongLinkClient
 	origRetryConfig := songLinkRetryConfig
-	origSearchByISRC := songLinkSearchByISRC
-	origCheckFromDeezer := songLinkCheckAvailabilityFromDeezer
 	defer func() {
 		globalSongLinkClient = origClient
 		songLinkRetryConfig = origRetryConfig
-		songLinkSearchByISRC = origSearchByISRC
-		songLinkCheckAvailabilityFromDeezer = origCheckFromDeezer
 		SetSongLinkNetworkOptions(false, false)
 	}()
 	songLinkRetryConfig = func() RetryConfig {
@@ -69,11 +91,12 @@ func TestSongLinkExportWrappersWithFakeClient(t *testing.T) {
 	}
 	globalSongLinkClient = &SongLinkClient{client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		var body string
-		if req.URL.Host == "api.zarz.moe" {
+		switch req.URL.Host {
+		case "api.zarz.moe":
 			body = `{"success":true,"songUrls":{"Spotify":"https://open.spotify.com/track/spotify-1","Deezer":"https://www.deezer.com/track/101","Tidal":"https://listen.tidal.com/track/202","YouTube":"https://youtu.be/yt1","AmazonMusic":"https://music.amazon.com/tracks/amz1","Qobuz":"https://open.qobuz.com/track/303"}}`
-		} else if req.URL.Host == "api.song.link" {
+		case "api.song.link":
 			body = `{"linksByPlatform":{"spotify":{"url":"https://open.spotify.com/track/spotify-1"},"deezer":{"url":"https://www.deezer.com/track/101"},"tidal":{"url":"https://listen.tidal.com/track/202"},"youtubeMusic":{"url":"https://music.youtube.com/watch?v=ytm1"},"amazonMusic":{"url":"https://music.amazon.com/tracks/amz1"},"qobuz":{"url":"https://open.qobuz.com/track/303"}}}`
-		} else {
+		default:
 			t.Fatalf("unexpected SongLink request: %s", req.URL.String())
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
@@ -81,15 +104,6 @@ func TestSongLinkExportWrappersWithFakeClient(t *testing.T) {
 	songLinkClientOnce.Do(func() {})
 
 	SetSongLinkNetworkOptions(true, true)
-	if availabilityJSON, err := CheckAvailability("spotify-1", ""); err != nil || !strings.Contains(availabilityJSON, `"deezer_id":"101"`) {
-		t.Fatalf("CheckAvailability = %q/%v", availabilityJSON, err)
-	}
-	if availabilityJSON, err := CheckAvailabilityFromDeezerID("101"); err != nil || !strings.Contains(availabilityJSON, `"spotify_id":"spotify-1"`) {
-		t.Fatalf("CheckAvailabilityFromDeezerID = %q/%v", availabilityJSON, err)
-	}
-	if availabilityJSON, err := CheckAvailabilityByPlatformID("deezer", "song", "101"); err != nil || !strings.Contains(availabilityJSON, `"tidal_url"`) {
-		t.Fatalf("CheckAvailabilityByPlatformID = %q/%v", availabilityJSON, err)
-	}
 	if spotifyID, err := GetSpotifyIDFromDeezerTrack("101"); err != nil || spotifyID != "spotify-1" {
 		t.Fatalf("GetSpotifyIDFromDeezerTrack = %q/%v", spotifyID, err)
 	}
@@ -121,17 +135,21 @@ func TestSongLinkExportWrappersWithFakeClient(t *testing.T) {
 		t.Fatalf("CheckAvailabilityFromURL = %#v/%v", availability, err)
 	}
 
-	songLinkSearchByISRC = func(ctx context.Context, isrc string) (*TrackMetadata, error) {
-		return &TrackMetadata{SpotifyID: "deezer:101", ExternalURL: "https://www.deezer.com/track/101"}, nil
-	}
-	songLinkCheckAvailabilityFromDeezer = func(s *SongLinkClient, deezerTrackID string) (*TrackAvailability, error) {
-		return &TrackAvailability{SpotifyID: "spotify-1", Deezer: true, DeezerID: deezerTrackID}, nil
-	}
-	if availabilityJSON, err := CheckAvailability("", "USRC17607839"); err != nil || !strings.Contains(availabilityJSON, `"deezer_id":"101"`) {
-		t.Fatalf("CheckAvailability by ISRC = %q/%v", availabilityJSON, err)
-	}
 	if songLinkExtractDeezerTrackID(nil) != "" || songLinkExtractDeezerTrackID(&TrackMetadata{ExternalURL: "https://www.deezer.com/track/202"}) != "202" {
 		t.Fatal("songLinkExtractDeezerTrackID mismatch")
+	}
+
+	if linksJSON, err := GetTrackPlatformLinksJSON("spotify-1", ""); err != nil ||
+		!strings.Contains(linksJSON, `"tidal":"https://listen.tidal.com/track/202"`) ||
+		!strings.Contains(linksJSON, `"spotify":`) {
+		t.Fatalf("GetTrackPlatformLinksJSON = %q/%v", linksJSON, err)
+	}
+	// Second call must come from the links cache, not a new request.
+	if cached, hit, cachedErr := trackPlatformLinksCacheLookup(GetSongLinkRegion() + "|spotify:spotify-1"); !hit || cachedErr || cached["tidal"] == "" {
+		t.Fatalf("trackPlatformLinksCacheLookup = %#v hit=%v err=%v", cached, hit, cachedErr)
+	}
+	if _, err := GetTrackPlatformLinksJSON("", ""); err == nil {
+		t.Fatal("GetTrackPlatformLinksJSON with empty IDs should error")
 	}
 
 	deezerClient = &DeezerClient{

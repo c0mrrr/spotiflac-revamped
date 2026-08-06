@@ -1,5 +1,7 @@
+import AuthenticationServices
 import Flutter
 import UIKit
+import UniformTypeIdentifiers
 import Gobackend
 
 @main
@@ -23,10 +25,17 @@ import Gobackend
     /// Currently accessed security-scoped URL for library folder
     private var activeSecurityScopedURL: URL?
 
+    /// Pending Flutter result for the native folder picker
+    private var pendingDirectoryPickerResult: FlutterResult?
+
     /// Whether a download queue is active; while true a background task is
     /// started on each background entry to extend execution time. Main-thread only.
     private var downloadsActive = false
     private var downloadBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+
+    /// Strong reference to the in-flight ASWebAuthenticationSession; the
+    /// session is deallocated (and its sheet dismissed) without it.
+    private var activeWebAuthSession: AnyObject?
     
     override func application(
         _ application: UIApplication,
@@ -98,49 +107,81 @@ import Gobackend
     /// - Signed session: spotiflac://session-grant?grant=...&state=<extension_id>
     @discardableResult
     private func handleExtensionOAuthRedirect(url: URL) -> Bool {
-        guard let scheme = url.scheme?.lowercased(), scheme == "spotiflac" else { return false }
-        let host = (url.host ?? "").lowercased()
-        let path = url.path.lowercased()
-        let isSessionGrant = host == "session-grant"
-        let ok =
-            isSessionGrant || host == "callback" || host == "spotify-callback" || path.contains("callback")
-        guard ok else { return false }
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return false
-        }
-        let q = components.queryItems ?? []
-        let code =
-            q.first { $0.name == (isSessionGrant ? "grant" : "code") }?.value?.trimmingCharacters(
-                in: .whitespacesAndNewlines) ??
-            q.first { $0.name == "code" }?.value?.trimmingCharacters(
-                in: .whitespacesAndNewlines) ?? ""
-        let state =
-            q.first { $0.name == "state" }?.value?.trimmingCharacters(
-                in: .whitespacesAndNewlines) ?? ""
-        if code.isEmpty { return false }
-        if state.isEmpty {
-            NSLog("SpotiFLAC: Extension OAuth redirect missing state (extension id)")
-            return false
-        }
+        guard let route = ExtensionCallbackParser.parse(url) else { return false }
         streamQueue.async {
             var err: NSError?
-            if isSessionGrant {
-                GobackendSetExtensionSessionGrantByID(state, code)
-                _ = GobackendInvokeExtensionActionJSON(state, "completeGrant", &err)
+            var response: String?
+            if route.isSessionGrant {
+                GobackendSetExtensionSessionGrantByID(route.extensionId, route.code)
+                response = GobackendInvokeExtensionActionJSON(
+                    route.extensionId,
+                    "completeGrant",
+                    &err
+                )
             } else {
-                GobackendSetExtensionAuthCodeByID(state, code)
-                _ = GobackendInvokeExtensionActionJSON(state, "completeSpotifyLogin", &err)
+                GobackendSetExtensionAuthCodeByID(route.extensionId, route.code)
+                response = GobackendInvokeExtensionActionJSON(
+                    route.extensionId,
+                    "completeSpotifyLogin",
+                    &err
+                )
+            }
+            if err == nil && route.isSessionGrant {
+                do {
+                    try self.requireSuccessfulExtensionAction(
+                        extensionId: route.extensionId,
+                        actionName: "completeGrant",
+                        response: response
+                    )
+                } catch {
+                    err = error as NSError
+                }
             }
             if let err = err {
                 NSLog(
                     "SpotiFLAC: Extension callback complete failed: \(err.localizedDescription)")
-            } else if isSessionGrant {
+            } else if route.isSessionGrant {
                 DispatchQueue.main.async { [weak self] in
-                    self?.notifySessionGrantCompleted(extensionId: state)
+                    self?.notifySessionGrantCompleted(
+                        extensionId: route.extensionId
+                    )
                 }
             }
         }
         return true
+    }
+
+    private func requireSuccessfulExtensionAction(
+        extensionId: String,
+        actionName: String,
+        response: String?
+    ) throws {
+        let text = response ?? ""
+        guard let data = text.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(
+                domain: "SpotiFLAC",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Extension \(actionName) for \(extensionId) returned invalid JSON: \(String(text.prefix(240)))"
+                ]
+            )
+        }
+        if (obj["success"] as? Bool) == true {
+            return
+        }
+        let error =
+            (obj["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ??
+            (obj["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ??
+            String(text.prefix(240))
+        throw NSError(
+            domain: "SpotiFLAC",
+            code: 2,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Extension \(actionName) failed for \(extensionId): \(error)"
+            ]
+        )
     }
 
     private func notifySessionGrantCompleted(extensionId: String) {
@@ -284,6 +325,19 @@ import Gobackend
             endBackgroundDownloadTask()
             result(nil)
             return
+        case "pickIosDirectory":
+            pickIosDirectory(result: result)
+            return
+        case "startWebAuthSession":
+            let args = call.arguments as? [String: Any] ?? [:]
+            let urlString = (args["url"] as? String) ?? ""
+            let callbackScheme = (args["callback_scheme"] as? String) ?? "spotiflac"
+            startWebAuthSession(
+                urlString: urlString,
+                callbackScheme: callbackScheme,
+                result: result
+            )
+            return
         default:
             break
         }
@@ -300,6 +354,52 @@ import Gobackend
                 }
             }
         }
+    }
+
+    /// Runs a verification/OAuth page inside ASWebAuthenticationSession. The
+    /// session intercepts the callback scheme in-process — no OS-level URL
+    /// scheme registration is involved — so the flow completes even where the
+    /// app's scheme is not registered with iOS (sideload containers such as
+    /// LiveContainer). The callback URL is fed into the same deep-link handler
+    /// the OS path uses. Returns whether the session was presented; completion
+    /// is delivered later through the existing grant-event plumbing.
+    private func startWebAuthSession(
+        urlString: String,
+        callbackScheme: String,
+        result: @escaping FlutterResult
+    ) {
+        guard #available(iOS 13.0, *) else {
+            result(false)
+            return
+        }
+        guard let url = URL(string: urlString), url.scheme?.lowercased() == "https" else {
+            result(false)
+            return
+        }
+        let scheme = callbackScheme.isEmpty ? "spotiflac" : callbackScheme
+        let session = ASWebAuthenticationSession(
+            url: url,
+            callbackURLScheme: scheme
+        ) { [weak self] callbackURL, error in
+            self?.activeWebAuthSession = nil
+            guard let callbackURL = callbackURL else {
+                if let error = error {
+                    NSLog("SpotiFLAC: web auth session ended: \(error.localizedDescription)")
+                }
+                return
+            }
+            _ = self?.handleExtensionOAuthRedirect(url: callbackURL)
+        }
+        session.presentationContextProvider = self
+        // Share Safari's cookie store so captcha providers see an established
+        // browsing context instead of a blank ephemeral one.
+        session.prefersEphemeralWebBrowserSession = false
+        activeWebAuthSession = session
+        let started = session.start()
+        if !started {
+            activeWebAuthSession = nil
+        }
+        result(started)
     }
 
     override func applicationDidEnterBackground(_ application: UIApplication) {
@@ -334,39 +434,15 @@ import Gobackend
         var error: NSError?
         
         switch call.method {
-        case "checkAvailability":
-            let args = call.arguments as! [String: Any]
-            let spotifyId = args["spotify_id"] as! String
-            let isrc = args["isrc"] as! String
-            let response = GobackendCheckAvailability(spotifyId, isrc, &error)
-            if let error = error { throw error }
-            return response
-            
         case "downloadByStrategy":
             let requestJson = call.arguments as! String
             let response = GobackendDownloadByStrategy(requestJson, &error)
             if let error = error { throw error }
             return response
 
-        case "getDownloadProgress":
-            let response = GobackendGetDownloadProgress()
-            return parseJsonPayload(response as String? ?? "{}")
-            
         case "getAllDownloadProgress":
             let response = GobackendGetAllDownloadProgress()
             return parseJsonPayload(response as String? ?? "{}")
-            
-        case "initItemProgress":
-            let args = call.arguments as! [String: Any]
-            let itemId = args["item_id"] as! String
-            GobackendInitItemProgress(itemId)
-            return nil
-            
-        case "finishItemProgress":
-            let args = call.arguments as! [String: Any]
-            let itemId = args["item_id"] as! String
-            GobackendFinishItemProgress(itemId)
-            return nil
             
         case "clearItemProgress":
             let args = call.arguments as! [String: Any]
@@ -379,7 +455,13 @@ import Gobackend
             let itemId = args["item_id"] as! String
             GobackendCancelDownload(itemId)
             return nil
-            
+
+        case "resetDownloadCancel":
+            let args = call.arguments as! [String: Any]
+            let itemId = args["item_id"] as! String
+            GobackendResetDownloadCancel(itemId)
+            return nil
+
         case "setDownloadDirectory":
             let args = call.arguments as! [String: Any]
             let path = args["path"] as! String
@@ -399,14 +481,6 @@ import Gobackend
             let allowed = args["allowed"] as? Bool ?? false
             GobackendSetAllowPrivateNetwork(allowed)
             return nil
-            
-        case "checkDuplicate":
-            let args = call.arguments as! [String: Any]
-            let outputDir = args["output_dir"] as! String
-            let isrc = args["isrc"] as! String
-            let response = GobackendCheckDuplicate(outputDir, isrc, &error)
-            if let error = error { throw error }
-            return response
             
         case "checkDuplicatesBatch":
             let args = call.arguments as! [String: Any]
@@ -441,16 +515,6 @@ import Gobackend
             let args = call.arguments as! [String: Any]
             let filename = args["filename"] as! String
             let response = GobackendSanitizeFilename(filename)
-            return response
-            
-        case "fetchLyrics":
-            let args = call.arguments as! [String: Any]
-            let spotifyId = args["spotify_id"] as! String
-            let trackName = args["track_name"] as! String
-            let artistName = args["artist_name"] as! String
-            let durationMs = args["duration_ms"] as? Int64 ?? 0
-            let response = GobackendFetchLyrics(spotifyId, trackName, artistName, durationMs, &error)
-            if let error = error { throw error }
             return response
             
         case "getLyricsLRC":
@@ -547,14 +611,6 @@ import Gobackend
             if let error = error { throw error }
             return response
             
-        case "getDeezerRelatedArtists":
-            let args = call.arguments as! [String: Any]
-            let artistId = args["artist_id"] as! String
-            let limit = args["limit"] as? Int ?? 12
-            let response = GobackendGetDeezerRelatedArtists(artistId, Int(limit), &error)
-            if let error = error { throw error }
-            return response
-
         case "getProviderMetadata":
             let args = call.arguments as! [String: Any]
             let providerId = args["provider_id"] as! String
@@ -587,22 +643,6 @@ import Gobackend
             if let error = error { throw error }
             return response
 
-        case "checkAvailabilityFromDeezerID":
-            let args = call.arguments as! [String: Any]
-            let deezerTrackId = args["deezer_track_id"] as! String
-            let response = GobackendCheckAvailabilityFromDeezerID(deezerTrackId, &error)
-            if let error = error { throw error }
-            return response
-            
-        case "checkAvailabilityByPlatformID":
-            let args = call.arguments as! [String: Any]
-            let platform = args["platform"] as! String
-            let entityType = args["entity_type"] as! String
-            let entityId = args["entity_id"] as! String
-            let response = GobackendCheckAvailabilityByPlatformID(platform, entityType, entityId, &error)
-            if let error = error { throw error }
-            return response
-            
         case "getSpotifyIDFromDeezerTrack":
             let args = call.arguments as! [String: Any]
             let deezerTrackId = args["deezer_track_id"] as! String
@@ -617,24 +657,13 @@ import Gobackend
             if let error = error { throw error }
             return response
             
-        case "preWarmTrackCache":
-            let args = call.arguments as! [String: Any]
-            let tracksJson = args["tracks"] as! String
-            let _ = GobackendPreWarmTrackCacheJSON(tracksJson, &error)
-            if let error = error { throw error }
-            return nil
-            
         case "getTrackCacheSize":
             let response = GobackendGetTrackCacheSize()
             return response
             
         case "clearTrackCache":
-            GobackendClearTrackCache()
+            GobackendClearTrackIDCache()
             return nil
-            
-        case "getLogs":
-            let response = GobackendGetLogs()
-            return response
             
         case "getLogsSince":
             let args = call.arguments as! [String: Any]
@@ -645,10 +674,17 @@ import Gobackend
         case "clearLogs":
             GobackendClearLogs()
             return nil
-            
-        case "getLogCount":
-            let response = GobackendGetLogCount()
-            return response
+
+        case "releaseMemory":
+            GobackendReleaseMemory()
+            return nil
+
+        case "releaseMemoryUnderPressure":
+            GobackendReleaseMemoryUnderPressure()
+            return nil
+
+        case "getGoRuntimeMetrics":
+            return GobackendGetRuntimeMetricsJSON()
             
         case "setLoggingEnabled":
             let args = call.arguments as! [String: Any]
@@ -759,14 +795,6 @@ import Gobackend
             if let error = error { throw error }
             return response
             
-        case "searchTracksWithExtensions":
-            let args = call.arguments as! [String: Any]
-            let query = args["query"] as! String
-            let limit = args["limit"] as? Int ?? 20
-            let response = GobackendSearchTracksWithExtensionsJSON(query, Int(limit), &error)
-            if let error = error { throw error }
-            return response
-
         case "searchTracksWithMetadataProviders":
             let args = call.arguments as! [String: Any]
             let query = args["query"] as! String
@@ -776,6 +804,20 @@ import Gobackend
                 query,
                 Int(limit),
                 includeExtensions,
+                &error
+            )
+            if let error = error { throw error }
+            return response
+
+        case "searchTracksWithMetadataProvider":
+            let args = call.arguments as! [String: Any]
+            let extensionId = args["extension_id"] as? String ?? ""
+            let query = args["query"] as? String ?? ""
+            let limit = args["limit"] as? Int ?? 20
+            let response = GobackendSearchTracksWithMetadataProviderJSON(
+                extensionId,
+                query,
+                Int(limit),
                 &error
             )
             if let error = error { throw error }
@@ -833,6 +875,20 @@ import Gobackend
             let authCode = args["auth_code"] as! String
             GobackendSetExtensionAuthCodeByID(extensionId, authCode)
             return nil
+
+        case "completeExtensionSessionGrant":
+            let args = call.arguments as! [String: Any]
+            let extensionId = args["extension_id"] as! String
+            let grant = args["grant"] as! String
+            GobackendSetExtensionSessionGrantByID(extensionId, grant)
+            let response = GobackendInvokeExtensionActionJSON(extensionId, "completeGrant", &error)
+            if let error = error { throw error }
+            try requireSuccessfulExtensionAction(
+                extensionId: extensionId,
+                actionName: "completeGrant",
+                response: response
+            )
+            return true
             
         case "setExtensionTokens":
             let args = call.arguments as! [String: Any]
@@ -897,11 +953,6 @@ import Gobackend
             GobackendCancelExtensionRequestJSON(requestId)
             return nil
 
-        case "getSearchProviders":
-            let response = GobackendGetSearchProvidersJSON(&error)
-            if let error = error { throw error }
-            return response
-            
         case "handleURLWithExtension":
             let args = call.arguments as! [String: Any]
             let url = args["url"] as! String
@@ -915,19 +966,29 @@ import Gobackend
             let response = GobackendFindURLHandlerJSON(url)
             return response
             
-        case "getURLHandlers":
-            let response = GobackendGetURLHandlersJSON(&error)
-            if let error = error { throw error }
-            return response
-            
-        case "runPostProcessing":
+        case "getTrackPlatformLinks":
             let args = call.arguments as! [String: Any]
-            let filePath = args["file_path"] as! String
-            let metadataJson = args["metadata"] as? String ?? ""
-            let response = GobackendRunPostProcessingJSON(filePath, metadataJson, &error)
+            let spotifyId = args["spotify_id"] as? String ?? ""
+            let isrc = args["isrc"] as? String ?? ""
+            let response = GobackendGetTrackPlatformLinksJSON(spotifyId, isrc, &error)
             if let error = error { throw error }
             return response
 
+        case "fetchMusicBrainzTags":
+            let args = call.arguments as! [String: Any]
+            let isrc = args["isrc"] as? String ?? ""
+            let albumName = args["album_name"] as? String ?? ""
+            var genreError: NSError?
+            let genre = GobackendFetchMusicBrainzGenreByISRC(isrc, &genreError)
+            var artistError: NSError?
+            let albumArtist = GobackendFetchMusicBrainzAlbumArtistByISRC(isrc, albumName, &artistError)
+            let payload: [String: Any] = [
+                "genre": genreError == nil ? genre : "",
+                "album_artist": artistError == nil ? albumArtist : "",
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            return String(data: data, encoding: .utf8) ?? "{}"
+            
         case "runPostProcessingV2":
             let args = call.arguments as! [String: Any]
             let inputJson = args["input"] as? String ?? ""
@@ -936,65 +997,60 @@ import Gobackend
             if let error = error { throw error }
             return response
             
-        case "getPostProcessingProviders":
-            let response = GobackendGetPostProcessingProvidersJSON(&error)
-            if let error = error { throw error }
-            return response
-            
-        case "initExtensionStore":
+        case "initExtensionRepo":
             let args = call.arguments as! [String: Any]
             let cacheDir = args["cache_dir"] as! String
-            GobackendInitExtensionStoreJSON(cacheDir, &error)
+            GobackendInitExtensionRepoJSON(cacheDir, &error)
             if let error = error { throw error }
             return nil
             
-        case "setStoreRegistryUrl":
+        case "setRepoRegistryUrl":
             let args = call.arguments as! [String: Any]
             let registryUrl = args["registry_url"] as? String ?? ""
-            GobackendSetStoreRegistryURLJSON(registryUrl, &error)
+            GobackendSetRepoRegistryURLJSON(registryUrl, &error)
             if let error = error { throw error }
             return nil
             
-        case "getStoreRegistryUrl":
-            let response = GobackendGetStoreRegistryURLJSON(&error)
+        case "getRepoRegistryUrl":
+            let response = GobackendGetRepoRegistryURLJSON(&error)
             if let error = error { throw error }
             return response
             
-        case "clearStoreRegistryUrl":
-            GobackendClearStoreRegistryURLJSON(&error)
+        case "clearRepoRegistryUrl":
+            GobackendClearRepoRegistryURLJSON(&error)
             if let error = error { throw error }
             return nil
             
-        case "getStoreExtensions":
+        case "getRepoExtensions":
             let args = call.arguments as! [String: Any]
             let forceRefresh = args["force_refresh"] as? Bool ?? false
-            let response = GobackendGetStoreExtensionsJSON(forceRefresh, &error)
+            let response = GobackendGetRepoExtensionsJSON(forceRefresh, &error)
             if let error = error { throw error }
             return response
             
-        case "searchStoreExtensions":
+        case "searchRepoExtensions":
             let args = call.arguments as! [String: Any]
             let query = args["query"] as? String ?? ""
             let category = args["category"] as? String ?? ""
-            let response = GobackendSearchStoreExtensionsJSON(query, category, &error)
+            let response = GobackendSearchRepoExtensionsJSON(query, category, &error)
             if let error = error { throw error }
             return response
             
-        case "getStoreCategories":
-            let response = GobackendGetStoreCategoriesJSON(&error)
+        case "getRepoCategories":
+            let response = GobackendGetRepoCategoriesJSON(&error)
             if let error = error { throw error }
             return response
             
-        case "downloadStoreExtension":
+        case "downloadRepoExtension":
             let args = call.arguments as! [String: Any]
             let extensionId = args["extension_id"] as! String
             let destDir = args["dest_dir"] as! String
-            let response = GobackendDownloadStoreExtensionJSON(extensionId, destDir, &error)
+            let response = GobackendDownloadRepoExtensionJSON(extensionId, destDir, &error)
             if let error = error { throw error }
             return response
             
-        case "clearStoreCache":
-            GobackendClearStoreCacheJSON(&error)
+        case "clearRepoCache":
+            GobackendClearRepoCacheJSON(&error)
             if let error = error { throw error }
             return nil
             
@@ -1003,13 +1059,6 @@ import Gobackend
             let extensionId = args["extension_id"] as! String
             let requestId = args["request_id"] as? String ?? ""
             let response = GobackendGetExtensionHomeFeedJSONWithRequestID(extensionId, requestId, &error)
-            if let error = error { throw error }
-            return response
-            
-        case "getExtensionBrowseCategories":
-            let args = call.arguments as! [String: Any]
-            let extensionId = args["extension_id"] as! String
-            let response = GobackendGetExtensionBrowseCategoriesJSON(extensionId, &error)
             if let error = error { throw error }
             return response
             
@@ -1114,8 +1163,40 @@ import Gobackend
         }
     }
     
+    // MARK: - Native Folder Picker
+
+    /// Present a native folder picker and return `{path, bookmark}` where the
+    /// security-scoped bookmark is created inside the picker callback, while
+    /// the picker's access grant is still active. Returns nil on cancel.
+    private func pickIosDirectory(result: @escaping FlutterResult) {
+        if pendingDirectoryPickerResult != nil {
+            result(FlutterError(
+                code: "PICKER_ACTIVE",
+                message: "A folder picker is already active",
+                details: nil
+            ))
+            return
+        }
+        guard var topController = window?.rootViewController else {
+            result(FlutterError(
+                code: "NO_VIEW_CONTROLLER",
+                message: "No view controller available to present the folder picker",
+                details: nil
+            ))
+            return
+        }
+        while let presented = topController.presentedViewController {
+            topController = presented
+        }
+        pendingDirectoryPickerResult = result
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.folder])
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        topController.present(picker, animated: true)
+    }
+
     // MARK: - iOS Security-Scoped Bookmark Helpers
-    
+
     /// Create a security-scoped bookmark from a filesystem path (e.g. from FilePicker).
     /// The path must currently be accessible (within the same picker session).
     /// Returns base64-encoded bookmark data.
@@ -1233,6 +1314,57 @@ import Gobackend
             url.stopAccessingSecurityScopedResource()
             activeSecurityScopedURL = nil
         }
+    }
+}
+
+@available(iOS 13.0, *)
+extension AppDelegate: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return window ?? ASPresentationAnchor()
+    }
+}
+
+extension AppDelegate: UIDocumentPickerDelegate {
+    func documentPicker(
+        _ controller: UIDocumentPickerViewController,
+        didPickDocumentsAt urls: [URL]
+    ) {
+        guard let result = pendingDirectoryPickerResult else { return }
+        pendingDirectoryPickerResult = nil
+        guard let url = urls.first else {
+            result(nil)
+            return
+        }
+        // The bookmark must be created here, from the picker's own URL, while
+        // its security-scoped grant is active. A URL rebuilt from the path
+        // string later has no grant, so bookmark creation either fails or
+        // yields a bookmark that cannot re-open the folder.
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccess { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            let bookmarkData = try url.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            result([
+                "path": url.path,
+                "bookmark": bookmarkData.base64EncodedString(),
+            ])
+        } catch {
+            result(FlutterError(
+                code: "BOOKMARK_FAILED",
+                message: "Failed to create bookmark for \(url.path): \(error.localizedDescription)",
+                details: nil
+            ))
+        }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pendingDirectoryPickerResult?(nil)
+        pendingDirectoryPickerResult = nil
     }
 }
 

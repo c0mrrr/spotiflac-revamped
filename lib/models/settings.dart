@@ -6,6 +6,8 @@ part 'settings.g.dart';
 @JsonSerializable()
 class AppSettings {
   static const String homeFeedProviderOff = '__off__';
+  static const String libraryQualityLabelBitrate = 'bitrate';
+  static const String libraryQualityLabelBitDepth = 'bit_depth';
 
   final String defaultService;
   final String audioQuality;
@@ -20,6 +22,8 @@ class AppSettings {
   artistTagMode; // 'joined' or 'split_vorbis' for Vorbis-based formats
   final bool embedLyrics;
   final bool embedReplayGain;
+  // Apply ReplayGain/R128 tags as volume normalization in the built-in player.
+  final bool playbackNormalization;
   final bool maxQualityCover;
   final bool isFirstLaunch;
   final bool checkForUpdates;
@@ -32,6 +36,13 @@ class AppSettings {
   final bool filterContributingArtistsInAlbumArtist;
   final String historyViewMode;
   final String historyFilterMode;
+
+  /// Library view opened when switching to the Library tab:
+  /// 'last' (keep last used), 'all', 'albums', 'singles', or 'playlists'.
+  final String defaultLibraryView;
+
+  /// Library badge text: measured bitrate or the legacy bit depth/sample rate.
+  final String libraryQualityLabelMode;
   final bool askQualityBeforeDownload;
   final bool enableLogging;
   final bool useExtensionProviders;
@@ -43,6 +54,15 @@ class AppSettings {
   final String singleFilenameFormat;
   final String albumFolderStructure;
   final bool showExtensionStore;
+
+  /// Shared-element (Hero) flights, e.g. the mini player artwork expanding
+  /// into the full player. Off skips the flights entirely.
+  final bool heroAnimationsEnabled;
+
+  /// Forces the shell's backdrop blur on even when the startup runtime
+  /// profile disabled it for this device tier. Off means "follow the
+  /// device default".
+  final bool forceBackdropBlur;
   final String
   extensionVerificationBrowserMode; // 'external_first' or 'in_app_first'
   final String locale;
@@ -60,8 +80,9 @@ class AppSettings {
   allowLocalNetwork; // Allow requests to private/local network targets (local proxy / custom DNS)
   final String
   songLinkRegion; // SongLink userCountry region code used for platform lookup
-  final bool
-  nativeDownloadWorkerEnabled; // Experimental Android service-owned worker
+  final bool nativeDownloadWorkerEnabled; // Android service-owned worker
+  final int
+  concurrentDownloads; // Max simultaneous downloads in the Dart queue (1-3)
 
   final bool localLibraryEnabled;
   final String localLibraryPath;
@@ -89,6 +110,7 @@ class AppSettings {
   lastSeenVersion; // Last app version the user has acknowledged (e.g. '3.7.0')
 
   final bool deduplicateDownloads;
+  final bool allowQualityVariants;
   final bool saveDownloadHistory;
 
   final String playerMode;
@@ -106,6 +128,7 @@ class AppSettings {
     this.artistTagMode = artistTagModeJoined,
     this.embedLyrics = true,
     this.embedReplayGain = false,
+    this.playbackNormalization = false,
     this.maxQualityCover = true,
     this.isFirstLaunch = true,
     this.checkForUpdates = true,
@@ -118,6 +141,8 @@ class AppSettings {
     this.filterContributingArtistsInAlbumArtist = false,
     this.historyViewMode = 'grid',
     this.historyFilterMode = 'all',
+    this.defaultLibraryView = 'last',
+    this.libraryQualityLabelMode = libraryQualityLabelBitrate,
     this.askQualityBeforeDownload = true,
     this.enableLogging = false,
     this.useExtensionProviders = true,
@@ -129,6 +154,8 @@ class AppSettings {
     this.singleFilenameFormat = '{title} - {artist}',
     this.albumFolderStructure = 'artist_album',
     this.showExtensionStore = true,
+    this.heroAnimationsEnabled = true,
+    this.forceBackdropBlur = false,
     this.extensionVerificationBrowserMode = 'in_app_first',
     this.locale = 'system',
     this.lyricsMode = 'embed',
@@ -140,6 +167,7 @@ class AppSettings {
     this.allowLocalNetwork = false,
     this.songLinkRegion = 'US',
     this.nativeDownloadWorkerEnabled = false,
+    this.concurrentDownloads = 1,
     this.localLibraryEnabled = false,
     this.localLibraryPath = '',
     this.localLibraryBookmark = '',
@@ -154,6 +182,7 @@ class AppSettings {
     this.musixmatchLanguage = '',
     this.lastSeenVersion = '',
     this.deduplicateDownloads = true,
+    this.allowQualityVariants = false,
     this.saveDownloadHistory = true,
     this.playerMode = 'external',
   });
@@ -171,6 +200,7 @@ class AppSettings {
     String? artistTagMode,
     bool? embedLyrics,
     bool? embedReplayGain,
+    bool? playbackNormalization,
     bool? maxQualityCover,
     bool? isFirstLaunch,
     bool? checkForUpdates,
@@ -183,6 +213,8 @@ class AppSettings {
     bool? filterContributingArtistsInAlbumArtist,
     String? historyViewMode,
     String? historyFilterMode,
+    String? defaultLibraryView,
+    String? libraryQualityLabelMode,
     bool? askQualityBeforeDownload,
     bool? enableLogging,
     bool? useExtensionProviders,
@@ -197,6 +229,8 @@ class AppSettings {
     String? singleFilenameFormat,
     String? albumFolderStructure,
     bool? showExtensionStore,
+    bool? heroAnimationsEnabled,
+    bool? forceBackdropBlur,
     String? extensionVerificationBrowserMode,
     String? locale,
     String? lyricsMode,
@@ -208,6 +242,7 @@ class AppSettings {
     bool? allowLocalNetwork,
     String? songLinkRegion,
     bool? nativeDownloadWorkerEnabled,
+    int? concurrentDownloads,
     bool? localLibraryEnabled,
     String? localLibraryPath,
     String? localLibraryBookmark,
@@ -222,6 +257,7 @@ class AppSettings {
     String? musixmatchLanguage,
     String? lastSeenVersion,
     bool? deduplicateDownloads,
+    bool? allowQualityVariants,
     bool? saveDownloadHistory,
     String? playerMode,
   }) {
@@ -239,6 +275,8 @@ class AppSettings {
       artistTagMode: artistTagMode ?? this.artistTagMode,
       embedLyrics: embedLyrics ?? this.embedLyrics,
       embedReplayGain: embedReplayGain ?? this.embedReplayGain,
+      playbackNormalization:
+          playbackNormalization ?? this.playbackNormalization,
       maxQualityCover: maxQualityCover ?? this.maxQualityCover,
       isFirstLaunch: isFirstLaunch ?? this.isFirstLaunch,
       checkForUpdates: checkForUpdates ?? this.checkForUpdates,
@@ -254,6 +292,9 @@ class AppSettings {
           this.filterContributingArtistsInAlbumArtist,
       historyViewMode: historyViewMode ?? this.historyViewMode,
       historyFilterMode: historyFilterMode ?? this.historyFilterMode,
+      defaultLibraryView: defaultLibraryView ?? this.defaultLibraryView,
+      libraryQualityLabelMode:
+          libraryQualityLabelMode ?? this.libraryQualityLabelMode,
       askQualityBeforeDownload:
           askQualityBeforeDownload ?? this.askQualityBeforeDownload,
       enableLogging: enableLogging ?? this.enableLogging,
@@ -273,6 +314,9 @@ class AppSettings {
       singleFilenameFormat: singleFilenameFormat ?? this.singleFilenameFormat,
       albumFolderStructure: albumFolderStructure ?? this.albumFolderStructure,
       showExtensionStore: showExtensionStore ?? this.showExtensionStore,
+      heroAnimationsEnabled:
+          heroAnimationsEnabled ?? this.heroAnimationsEnabled,
+      forceBackdropBlur: forceBackdropBlur ?? this.forceBackdropBlur,
       extensionVerificationBrowserMode:
           extensionVerificationBrowserMode ??
           this.extensionVerificationBrowserMode,
@@ -289,6 +333,7 @@ class AppSettings {
       songLinkRegion: songLinkRegion ?? this.songLinkRegion,
       nativeDownloadWorkerEnabled:
           nativeDownloadWorkerEnabled ?? this.nativeDownloadWorkerEnabled,
+      concurrentDownloads: concurrentDownloads ?? this.concurrentDownloads,
       localLibraryEnabled: localLibraryEnabled ?? this.localLibraryEnabled,
       localLibraryPath: localLibraryPath ?? this.localLibraryPath,
       localLibraryBookmark: localLibraryBookmark ?? this.localLibraryBookmark,
@@ -310,6 +355,7 @@ class AppSettings {
       musixmatchLanguage: musixmatchLanguage ?? this.musixmatchLanguage,
       lastSeenVersion: lastSeenVersion ?? this.lastSeenVersion,
       deduplicateDownloads: deduplicateDownloads ?? this.deduplicateDownloads,
+      allowQualityVariants: allowQualityVariants ?? this.allowQualityVariants,
       saveDownloadHistory: saveDownloadHistory ?? this.saveDownloadHistory,
       playerMode: playerMode ?? this.playerMode,
     );

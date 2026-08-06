@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotiflac_android/constants/app_info.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
@@ -29,6 +30,10 @@ class UpdateInfo {
   final DateTime publishedAt;
   final bool isPrerelease;
 
+  /// How many stable (non-prerelease) releases are newer than the installed
+  /// version. Drives the forced-update flow.
+  final int releasesBehind;
+
   const UpdateInfo({
     required this.version,
     required this.changelog,
@@ -36,14 +41,64 @@ class UpdateInfo {
     this.apkDownloadUrl,
     required this.publishedAt,
     this.isPrerelease = false,
+    this.releasesBehind = 0,
   });
 }
 
 class UpdateChecker {
-  static const String _latestApiUrl =
-      'https://api.github.com/repos/${AppInfo.githubRepo}/releases/latest';
   static const String _allReleasesApiUrl =
       'https://api.github.com/repos/${AppInfo.githubRepo}/releases';
+
+  /// Installed versions this many stable releases (or more) behind must
+  /// update before continuing to use the app.
+  static const int forceUpdateThreshold = 3;
+
+  // The releases payload is tens of KB and update cadence is days, not
+  // minutes: serve from cache within the TTL and revalidate with ETag after,
+  // instead of re-downloading the full list on every cold start.
+  static const Duration _cacheTtl = Duration(hours: 6);
+  static const String _cachedBodyKey = 'update_checker_releases_json';
+  static const String _cachedAtKey = 'update_checker_releases_fetched_at';
+  static const String _cachedEtagKey = 'update_checker_releases_etag';
+
+  static Future<String?> _fetchReleasesBody() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedBody = prefs.getString(_cachedBodyKey);
+    final cachedAt = prefs.getInt(_cachedAtKey) ?? 0;
+    final ageMs = DateTime.now().millisecondsSinceEpoch - cachedAt;
+    if (cachedBody != null && ageMs < _cacheTtl.inMilliseconds) {
+      return cachedBody;
+    }
+
+    final cachedEtag = prefs.getString(_cachedEtagKey);
+    final response = await http
+        .get(
+          Uri.parse('$_allReleasesApiUrl?per_page=30'),
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            if (cachedBody != null && cachedEtag != null)
+              'If-None-Match': cachedEtag,
+          },
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 304 && cachedBody != null) {
+      await prefs.setInt(_cachedAtKey, DateTime.now().millisecondsSinceEpoch);
+      return cachedBody;
+    }
+    if (response.statusCode != 200) {
+      _log.w('GitHub API returned ${response.statusCode}');
+      return cachedBody; // stale is better than none for the update prompt
+    }
+
+    await prefs.setString(_cachedBodyKey, response.body);
+    final etag = response.headers['etag'];
+    if (etag != null) {
+      await prefs.setString(_cachedEtagKey, etag);
+    }
+    await prefs.setInt(_cachedAtKey, DateTime.now().millisecondsSinceEpoch);
+    return response.body;
+  }
 
   static Future<UpdateInfo?> checkForUpdate({String channel = 'stable'}) async {
     if (!Platform.isAndroid) {
@@ -51,47 +106,50 @@ class UpdateChecker {
     }
 
     try {
+      final releasesJson = await _fetchReleasesBody();
+      if (releasesJson == null) {
+        return null;
+      }
+
+      final releases = (jsonDecode(releasesJson) as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (releases.isEmpty) {
+        _log.i('No releases found');
+        return null;
+      }
+
       Map<String, dynamic>? releaseData;
-
       if (channel == 'preview') {
-        final response = await http
-            .get(
-              Uri.parse('$_allReleasesApiUrl?per_page=10'),
-              headers: {'Accept': 'application/vnd.github.v3+json'},
-            )
-            .timeout(const Duration(seconds: 10));
-
-        if (response.statusCode != 200) {
-          _log.w('GitHub API returned ${response.statusCode}');
-          return null;
-        }
-
-        final releases = jsonDecode(response.body) as List<dynamic>;
-        if (releases.isEmpty) {
-          _log.i('No releases found');
-          return null;
-        }
-
-        releaseData = releases.first as Map<String, dynamic>;
+        releaseData = releases.first;
       } else {
-        final response = await http
-            .get(
-              Uri.parse(_latestApiUrl),
-              headers: {'Accept': 'application/vnd.github.v3+json'},
-            )
-            .timeout(const Duration(seconds: 10));
-
-        if (response.statusCode != 200) {
-          _log.w('GitHub API returned ${response.statusCode}');
-          return null;
+        for (final release in releases) {
+          if (release['prerelease'] != true) {
+            releaseData = release;
+            break;
+          }
         }
-
-        releaseData = jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      if (releaseData == null) {
+        _log.i('No stable release found');
+        return null;
       }
 
       final tagName = releaseData['tag_name'] as String? ?? '';
       final latestVersion = tagName.replaceFirst('v', '');
       final isPrerelease = releaseData['prerelease'] as bool? ?? false;
+
+      var releasesBehind = 0;
+      for (final release in releases) {
+        if (release['prerelease'] == true) continue;
+        final version = (release['tag_name'] as String? ?? '').replaceFirst(
+          'v',
+          '',
+        );
+        if (version.isNotEmpty && _isNewerVersion(version, AppInfo.version)) {
+          releasesBehind++;
+        }
+      }
 
       if (!_isNewerVersion(latestVersion, AppInfo.version)) {
         _log.i(
@@ -114,7 +172,8 @@ class UpdateChecker {
       final apkUrl = selectedAsset?.url;
 
       _log.i(
-        'Update available: $latestVersion (prerelease: $isPrerelease), '
+        'Update available: $latestVersion (prerelease: $isPrerelease, '
+        'releases behind: $releasesBehind), '
         'APK asset: ${selectedAsset?.name ?? 'none'}, APK URL: $apkUrl',
       );
 
@@ -125,6 +184,7 @@ class UpdateChecker {
         apkDownloadUrl: apkUrl,
         publishedAt: publishedAt,
         isPrerelease: isPrerelease,
+        releasesBehind: releasesBehind,
       );
     } catch (e) {
       _log.e('Error checking for updates: $e');

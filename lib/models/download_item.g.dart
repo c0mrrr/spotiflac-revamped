@@ -20,10 +20,13 @@ DownloadItem _$DownloadItemFromJson(Map<String, dynamic> json) => DownloadItem(
   filePath: json['filePath'] as String?,
   error: json['error'] as String?,
   errorType: $enumDecodeNullable(_$DownloadErrorTypeEnumMap, json['errorType']),
+  preparationStage: json['preparationStage'] as String? ?? '',
   createdAt: DateTime.parse(json['createdAt'] as String),
   qualityOverride: json['qualityOverride'] as String?,
   playlistName: json['playlistName'] as String?,
   playlistPosition: (json['playlistPosition'] as num?)?.toInt(),
+  fromBatch: json['fromBatch'] as bool? ?? false,
+  preserveQualityVariant: json['preserveQualityVariant'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$DownloadItemToJson(DownloadItem instance) =>
@@ -39,10 +42,13 @@ Map<String, dynamic> _$DownloadItemToJson(DownloadItem instance) =>
       'filePath': instance.filePath,
       'error': instance.error,
       'errorType': _$DownloadErrorTypeEnumMap[instance.errorType],
+      'preparationStage': instance.preparationStage,
       'createdAt': instance.createdAt.toIso8601String(),
       'qualityOverride': instance.qualityOverride,
       'playlistName': instance.playlistName,
       'playlistPosition': instance.playlistPosition,
+      'fromBatch': instance.fromBatch,
+      'preserveQualityVariant': instance.preserveQualityVariant,
     };
 
 const _$DownloadStatusEnumMap = {

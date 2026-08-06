@@ -1,9 +1,8 @@
 import 'dart:convert';
 
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:spotiflac_android/services/sqlite_helpers.dart' as sqlite;
 import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('LibraryCollectionsDb');
@@ -69,27 +68,14 @@ class LibraryCollectionsDatabase {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDb();
-    return _database!;
-  }
-
-  Future<Database> _initDb() async {
-    final dbPath = await getApplicationDocumentsDirectory();
-    final path = join(dbPath.path, _dbFileName);
-
-    _log.i('Initializing collections database at: $path');
-
-    return openDatabase(
-      path,
+    _database = await sqlite.openAppDatabase(
+      _dbFileName,
       version: _dbVersion,
-      onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-        await db.rawQuery('PRAGMA journal_mode = WAL');
-        await db.execute('PRAGMA synchronous = NORMAL');
-      },
+      foreignKeys: true,
       onCreate: _createDb,
       onUpgrade: _upgradeDb,
     );
+    return _database!;
   }
 
   Future<void> _createDb(Database db, int version) async {
@@ -277,13 +263,23 @@ class LibraryCollectionsDatabase {
       _tableLoved,
       orderBy: 'added_at DESC, rowid DESC',
     );
-    final playlistRows = await db.query(
-      _tablePlaylists,
-      orderBy: 'created_at DESC, rowid DESC',
-    );
+    final playlistRows = await db.rawQuery('''
+      SELECT
+        p.*,
+        CASE WHEN p.cover_image_path IS NULL OR p.cover_image_path = '' THEN (
+          SELECT pt.track_json
+          FROM $_tablePlaylistTracks pt
+          WHERE pt.playlist_id = p.id
+          ORDER BY pt.added_at ASC, pt.rowid ASC
+          LIMIT 1
+        ) END AS preview_track_json
+      FROM $_tablePlaylists p
+      ORDER BY p.created_at DESC, p.rowid DESC
+    ''');
     final playlistTrackRows = await db.query(
       _tablePlaylistTracks,
-      orderBy: 'playlist_id ASC, added_at DESC, rowid DESC',
+      columns: ['playlist_id', 'track_key'],
+      orderBy: 'playlist_id ASC, rowid ASC',
     );
     final favoriteArtistRows = await db.query(
       _tableFavoriteArtists,
@@ -296,6 +292,18 @@ class LibraryCollectionsDatabase {
       playlistRows: playlistRows,
       playlistTrackRows: playlistTrackRows,
       favoriteArtistRows: favoriteArtistRows,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loadPlaylistTracks(
+    String playlistId,
+  ) async {
+    final db = await database;
+    return db.query(
+      _tablePlaylistTracks,
+      where: 'playlist_id = ?',
+      whereArgs: [playlistId],
+      orderBy: 'added_at ASC, rowid ASC',
     );
   }
 
@@ -362,7 +370,7 @@ class LibraryCollectionsDatabase {
               SELECT inner_tracks.rowid
               FROM $_tablePlaylistTracks inner_tracks
               WHERE inner_tracks.playlist_id = outer_tracks.playlist_id
-              ORDER BY inner_tracks.added_at DESC, inner_tracks.rowid DESC
+              ORDER BY inner_tracks.added_at ASC, inner_tracks.rowid ASC
               LIMIT 1
             )
         ''', playlistIdsNeedingPreview);
@@ -412,67 +420,70 @@ class LibraryCollectionsDatabase {
         .toList(growable: false);
   }
 
-  Future<void> upsertWishlistEntry({
-    required String trackKey,
-    required String trackJson,
+  Future<void> _upsertEntry(
+    String table,
+    String prefix, {
+    required String key,
+    required String json,
     required String addedAt,
   }) async {
     final db = await database;
-    await db.insert(_tableWishlist, {
-      'track_key': trackKey,
-      'track_json': trackJson,
+    await db.insert(table, {
+      '${prefix}_key': key,
+      '${prefix}_json': json,
       'added_at': addedAt,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<void> deleteWishlistEntry(String trackKey) async {
+  Future<void> _deleteEntry(String table, String prefix, String key) async {
     final db = await database;
-    await db.delete(
-      _tableWishlist,
-      where: 'track_key = ?',
-      whereArgs: [trackKey],
-    );
+    await db.delete(table, where: '${prefix}_key = ?', whereArgs: [key]);
   }
+
+  Future<void> upsertWishlistEntry({
+    required String trackKey,
+    required String trackJson,
+    required String addedAt,
+  }) => _upsertEntry(
+    _tableWishlist,
+    'track',
+    key: trackKey,
+    json: trackJson,
+    addedAt: addedAt,
+  );
+
+  Future<void> deleteWishlistEntry(String trackKey) =>
+      _deleteEntry(_tableWishlist, 'track', trackKey);
 
   Future<void> upsertLovedEntry({
     required String trackKey,
     required String trackJson,
     required String addedAt,
-  }) async {
-    final db = await database;
-    await db.insert(_tableLoved, {
-      'track_key': trackKey,
-      'track_json': trackJson,
-      'added_at': addedAt,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  }) => _upsertEntry(
+    _tableLoved,
+    'track',
+    key: trackKey,
+    json: trackJson,
+    addedAt: addedAt,
+  );
 
-  Future<void> deleteLovedEntry(String trackKey) async {
-    final db = await database;
-    await db.delete(_tableLoved, where: 'track_key = ?', whereArgs: [trackKey]);
-  }
+  Future<void> deleteLovedEntry(String trackKey) =>
+      _deleteEntry(_tableLoved, 'track', trackKey);
 
   Future<void> upsertFavoriteArtistEntry({
     required String artistKey,
     required String artistJson,
     required String addedAt,
-  }) async {
-    final db = await database;
-    await db.insert(_tableFavoriteArtists, {
-      'artist_key': artistKey,
-      'artist_json': artistJson,
-      'added_at': addedAt,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  }) => _upsertEntry(
+    _tableFavoriteArtists,
+    'artist',
+    key: artistKey,
+    json: artistJson,
+    addedAt: addedAt,
+  );
 
-  Future<void> deleteFavoriteArtistEntry(String artistKey) async {
-    final db = await database;
-    await db.delete(
-      _tableFavoriteArtists,
-      where: 'artist_key = ?',
-      whereArgs: [artistKey],
-    );
-  }
+  Future<void> deleteFavoriteArtistEntry(String artistKey) =>
+      _deleteEntry(_tableFavoriteArtists, 'artist', artistKey);
 
   Future<void> upsertPlaylist({
     required String id,
@@ -602,7 +613,9 @@ class LibraryCollectionsDatabase {
   /// `LibraryCollectionsState.toJson()` (wishlist/loved/playlists/favoriteArtists).
   /// Track entries carry a nested `track` map (stored as `track_json`); favorite
   /// artist entries are stored whole as `artist_json`.
-  Future<void> replaceAllFromBackup(Map<String, dynamic> collectionsJson) async {
+  Future<void> replaceAllFromBackup(
+    Map<String, dynamic> collectionsJson,
+  ) async {
     final nowIso = DateTime.now().toIso8601String();
 
     List<Map<String, dynamic>> listOf(String key) {

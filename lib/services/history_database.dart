@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:spotiflac_android/services/sqlite_helpers.dart' as sqlite;
 import 'package:spotiflac_android/utils/logger.dart';
 import 'package:spotiflac_android/utils/path_match_keys.dart';
 
@@ -65,6 +65,7 @@ class HistoryBatchLookupRequest {
 }
 
 class HistoryDatabase {
+  static const int schemaVersion = 10;
   static final HistoryDatabase instance = HistoryDatabase._init();
   static Database? _database;
 
@@ -72,26 +73,13 @@ class HistoryDatabase {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('history.db');
-    return _database!;
-  }
-
-  Future<Database> _initDB(String fileName) async {
-    final dbPath = await getApplicationDocumentsDirectory();
-    final path = join(dbPath.path, fileName);
-
-    _log.i('Initializing database at: $path');
-
-    return await openDatabase(
-      path,
-      version: 9,
-      onConfigure: (db) async {
-        await db.rawQuery('PRAGMA journal_mode = WAL');
-        await db.execute('PRAGMA synchronous = NORMAL');
-      },
+    _database = await sqlite.openAppDatabase(
+      'history.db',
+      version: schemaVersion,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
+    return _database!;
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -132,7 +120,9 @@ class HistoryDatabase {
         copyright TEXT,
         spotify_id_norm TEXT,
         isrc_norm TEXT,
-        match_key TEXT
+        match_key TEXT,
+        album_key TEXT,
+        search_text TEXT
       )
     ''');
 
@@ -196,24 +186,27 @@ class HistoryDatabase {
     }
     if (oldVersion < 7) {
       await _createPathKeyTable(db);
-      await _backfillPathKeys(db);
+      await sqlite.backfillPathKeys(db, 'history', 'history_path_keys');
     }
     if (oldVersion < 8) {
-      await _addColumnIfMissing(db, 'history', 'spotify_id_norm', 'TEXT');
-      await _addColumnIfMissing(db, 'history', 'isrc_norm', 'TEXT');
-      await _addColumnIfMissing(db, 'history', 'match_key', 'TEXT');
+      await sqlite.addColumnIfMissing(db, 'history', 'spotify_id_norm', 'TEXT');
+      await sqlite.addColumnIfMissing(db, 'history', 'isrc_norm', 'TEXT');
+      await sqlite.addColumnIfMissing(db, 'history', 'match_key', 'TEXT');
+    }
+    if (oldVersion < 9) {
+      await sqlite.addColumnIfMissing(db, 'history', 'bitrate', 'INTEGER');
+      await sqlite.addColumnIfMissing(db, 'history', 'format', 'TEXT');
+    }
+    if (oldVersion < 10) {
+      await sqlite.addColumnIfMissing(db, 'history', 'album_key', 'TEXT');
+      await sqlite.addColumnIfMissing(db, 'history', 'search_text', 'TEXT');
       await _backfillNormalizedColumns(db);
       await _createNormalizedIndexes(db);
     }
-    if (oldVersion < 9) {
-      await _addColumnIfMissing(db, 'history', 'bitrate', 'INTEGER');
-      await _addColumnIfMissing(db, 'history', 'format', 'TEXT');
-    }
   }
 
-  static String normalizeLookupText(String? value) {
-    return (value ?? '').trim().toLowerCase();
-  }
+  static String normalizeLookupText(String? value) =>
+      sqlite.normalizeLookupText(value);
 
   static String normalizeIsrc(String? value) {
     return (value ?? '').trim().toUpperCase().replaceAll(RegExp(r'[-\s]'), '');
@@ -240,22 +233,17 @@ class HistoryDatabase {
     } else if (!trimmed.contains(':')) {
       candidates.add('spotify:track:$trimmed');
     }
-    return candidates.toList(growable: false);
-  }
-
-  Future<void> _addColumnIfMissing(
-    Database db,
-    String table,
-    String column,
-    String type,
-  ) async {
-    final columns = await db.rawQuery('PRAGMA table_info($table)');
-    final exists = columns.any(
-      (row) => (row['name']?.toString().toLowerCase() ?? '') == column,
-    );
-    if (!exists) {
-      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+    final uri = Uri.tryParse(trimmed);
+    final segments = uri?.pathSegments ?? const <String>[];
+    final trackIndex = segments.indexOf('track');
+    if (trackIndex >= 0 && trackIndex + 1 < segments.length) {
+      final pathId = segments[trackIndex + 1].trim();
+      if (pathId.isNotEmpty) {
+        candidates.add(pathId);
+        candidates.add('spotify:track:$pathId');
+      }
     }
+    return candidates.toList(growable: false);
   }
 
   Future<void> _createNormalizedIndexes(DatabaseExecutor db) async {
@@ -268,12 +256,23 @@ class HistoryDatabase {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_history_match_key ON history(match_key)',
     );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_history_album_key ON history(album_key)',
+    );
   }
 
   Future<void> _backfillNormalizedColumns(Database db) async {
     final rows = await db.query(
       'history',
-      columns: ['id', 'spotify_id', 'isrc', 'track_name', 'artist_name'],
+      columns: [
+        'id',
+        'spotify_id',
+        'isrc',
+        'track_name',
+        'artist_name',
+        'album_name',
+        'album_artist',
+      ],
     );
     final batch = db.batch();
     for (final row in rows) {
@@ -284,6 +283,8 @@ class HistoryDatabase {
           isrc: row['isrc'] as String?,
           trackName: row['track_name'] as String?,
           artistName: row['artist_name'] as String?,
+          albumName: row['album_name'] as String?,
+          albumArtist: row['album_artist'] as String?,
         ),
         where: 'id = ?',
         whereArgs: [row['id']],
@@ -297,49 +298,34 @@ class HistoryDatabase {
     required String? isrc,
     required String? trackName,
     required String? artistName,
+    required String? albumName,
+    required String? albumArtist,
   }) {
+    final normalizedTrack = normalizeLookupText(trackName);
+    final normalizedArtist = normalizeLookupText(artistName);
+    final normalizedAlbum = normalizeLookupText(albumName);
+    final normalizedAlbumArtist = normalizeLookupText(
+      (albumArtist ?? '').trim().isEmpty ? artistName : albumArtist,
+    );
     return {
       'spotify_id_norm': normalizeSpotifyId(spotifyId),
       'isrc_norm': normalizeIsrc(isrc),
       'match_key': matchKeyFor(trackName, artistName),
+      'album_key': '$normalizedAlbum|$normalizedAlbumArtist',
+      'search_text': [
+        normalizedTrack,
+        normalizedArtist,
+        normalizedAlbum,
+        normalizedAlbumArtist,
+      ].where((value) => value.isNotEmpty).join(' '),
     };
   }
 
-  Future<void> _createPathKeyTable(DatabaseExecutor db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS history_path_keys (
-        item_id TEXT NOT NULL,
-        path_key TEXT NOT NULL,
-        PRIMARY KEY (item_id, path_key)
-      )
-    ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_history_path_keys_key ON history_path_keys(path_key)',
-    );
-  }
+  Future<void> _createPathKeyTable(DatabaseExecutor db) =>
+      sqlite.createPathKeyTable(db, 'history_path_keys');
 
-  Future<void> _backfillPathKeys(Database db) async {
-    final rows = await db.query('history', columns: ['id', 'file_path']);
-    final batch = db.batch();
-    for (final row in rows) {
-      _putPathKeysInBatch(
-        batch,
-        row['id'] as String,
-        row['file_path'] as String?,
-      );
-    }
-    await batch.commit(noResult: true);
-  }
-
-  void _putPathKeysInBatch(Batch batch, String id, String? filePath) {
-    batch.delete('history_path_keys', where: 'item_id = ?', whereArgs: [id]);
-    for (final key in buildPathMatchKeys(filePath)) {
-      batch.insert('history_path_keys', {
-        'item_id': id,
-        'path_key': key,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-  }
+  void _putPathKeysInBatch(Batch batch, String id, String? filePath) =>
+      sqlite.putPathKeysInBatch(batch, 'history_path_keys', id, filePath);
 
   static final _iosContainerPattern = RegExp(
     r'/var/mobile/Containers/Data/Application/[A-F0-9\-]+/',
@@ -526,6 +512,8 @@ class HistoryDatabase {
         isrc: json['isrc'] as String?,
         trackName: json['trackName'] as String?,
         artistName: json['artistName'] as String?,
+        albumName: json['albumName'] as String?,
+        albumArtist: json['albumArtist'] as String?,
       ),
     );
     return row;
@@ -622,11 +610,12 @@ class HistoryDatabase {
     String artistName,
   ) async {
     final db = await database;
+    final albumKey =
+        '${normalizeLookupText(albumName)}|${normalizeLookupText(artistName)}';
     final rows = await db.query(
       'history',
-      where:
-          'LOWER(album_name) = ? AND LOWER(COALESCE(album_artist, artist_name)) = ?',
-      whereArgs: [albumName.toLowerCase(), artistName.toLowerCase()],
+      where: 'album_key = ?',
+      whereArgs: [albumKey],
       orderBy:
           'COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name',
     );
@@ -637,11 +626,13 @@ class HistoryDatabase {
     String trackName,
     String artistName,
   ) async {
+    final key = matchKeyFor(trackName, artistName);
+    if (key.isEmpty) return null;
     final db = await database;
     final rows = await db.query(
       'history',
-      where: 'LOWER(track_name) = ? AND LOWER(artist_name) = ?',
-      whereArgs: [trackName.toLowerCase(), artistName.toLowerCase()],
+      where: 'match_key = ?',
+      whereArgs: [key],
       orderBy: 'downloaded_at DESC',
       limit: 1,
     );
@@ -661,12 +652,31 @@ class HistoryDatabase {
     return _dbRowToJson(rows.first);
   }
 
+  Future<Map<String, dynamic>?> findByFilePath(String filePath) async {
+    final pathKeys = buildPathMatchKeys(filePath).toList(growable: false);
+    if (pathKeys.isEmpty) return null;
+
+    final db = await database;
+    final placeholders = List.filled(pathKeys.length, '?').join(',');
+    final rows = await db.rawQuery('''
+      SELECT h.*
+      FROM history h
+      JOIN history_path_keys hpk ON hpk.item_id = h.id
+      WHERE hpk.path_key IN ($placeholders)
+      ORDER BY h.downloaded_at DESC
+      LIMIT 1
+      ''', pathKeys);
+    if (rows.isEmpty) return null;
+    return _dbRowToJson(rows.first);
+  }
+
   Future<Map<String, dynamic>?> getBySpotifyId(String spotifyId) async {
     final db = await database;
     final rows = await db.query(
       'history',
       where: 'spotify_id = ?',
       whereArgs: [spotifyId],
+      orderBy: 'downloaded_at DESC',
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -679,15 +689,11 @@ class HistoryDatabase {
       'history',
       where: 'isrc = ?',
       whereArgs: [isrc],
+      orderBy: 'downloaded_at DESC',
       limit: 1,
     );
     if (rows.isEmpty) return null;
     return _dbRowToJson(rows.first);
-  }
-
-  Future<bool> existsTrack(HistoryLookupRequest request) async {
-    final row = await findExistingTrack(request, columns: ['id']);
-    return row != null;
   }
 
   Future<Map<String, dynamic>?> findExistingTrack(
@@ -739,78 +745,72 @@ class HistoryDatabase {
     return null;
   }
 
-  Future<Set<String>> existingTrackKeys(
+  /// Batch variant used by playlist playback. Four indexed scans resolve the
+  /// complete list while preserving the same Spotify -> ISRC -> match-key
+  /// priority as [findExistingTrack].
+  Future<List<Map<String, dynamic>?>> findExistingTracks(
     List<HistoryLookupRequest> requests,
   ) async {
-    if (requests.isEmpty) return const <String>{};
+    if (requests.isEmpty) return const [];
     final db = await database;
-    final found = <String>{};
-    final rawSpotifyToKeys = <String, Set<String>>{};
-    final normSpotifyToKeys = <String, Set<String>>{};
-    final isrcToKeys = <String, Set<String>>{};
-    final matchToKeys = <String, Set<String>>{};
+    final bySpotify = <String, Map<String, dynamic>>{};
+    final bySpotifyNorm = <String, Map<String, dynamic>>{};
+    final byIsrcNorm = <String, Map<String, dynamic>>{};
+    final byMatchKey = <String, Map<String, dynamic>>{};
 
-    void add(Map<String, Set<String>> map, String value, String key) {
-      if (value.isEmpty) return;
-      map.putIfAbsent(value, () => <String>{}).add(key);
-    }
-
-    for (final request in requests) {
-      final key = request.lookupKey;
-      for (final candidate in spotifyLookupCandidates(request.spotifyId)) {
-        add(rawSpotifyToKeys, candidate, key);
-        add(normSpotifyToKeys, normalizeSpotifyId(candidate), key);
-      }
-      add(isrcToKeys, normalizeIsrc(request.isrc), key);
-      add(matchToKeys, matchKeyFor(request.trackName, request.artistName), key);
-    }
-
-    Future<void> queryColumn(
+    Future<void> loadColumn(
       String column,
-      Map<String, Set<String>> keyMap,
-    ) async {
-      final values = keyMap.keys.toList(growable: false);
-      const chunkSize = 450;
-      for (var i = 0; i < values.length; i += chunkSize) {
-        final end = (i + chunkSize < values.length)
-            ? i + chunkSize
-            : values.length;
-        final chunk = values.sublist(i, end);
-        final placeholders = List.filled(chunk.length, '?').join(',');
-        final rows = await db.rawQuery(
-          'SELECT DISTINCT $column AS lookup_value FROM history WHERE $column IN ($placeholders)',
-          chunk,
-        );
-        for (final row in rows) {
-          final value = row['lookup_value'] as String?;
-          if (value == null) continue;
-          found.addAll(keyMap[value] ?? const <String>{});
-        }
-      }
+      Iterable<String> rawValues,
+      Map<String, Map<String, dynamic>> destination,
+    ) {
+      return sqlite.loadRowsByColumn(
+        db,
+        table: 'history',
+        column: column,
+        rawValues: rawValues,
+        destination: destination,
+        mapRow: _dbRowToJson,
+        orderBy: 'downloaded_at DESC',
+      );
     }
 
-    await queryColumn('spotify_id', rawSpotifyToKeys);
-    await queryColumn('spotify_id_norm', normSpotifyToKeys);
-    await queryColumn('isrc_norm', isrcToKeys);
-    await queryColumn('match_key', matchToKeys);
-    return found;
-  }
-
-  Future<bool> existsBySpotifyId(String spotifyId) async {
-    final db = await database;
-    final result = await db.rawQuery(
-      'SELECT 1 FROM history WHERE spotify_id = ? LIMIT 1',
-      [spotifyId],
+    final spotifyCandidates = requests.expand(
+      (request) => spotifyLookupCandidates(request.spotifyId),
     );
-    return result.isNotEmpty;
-  }
+    await Future.wait([
+      loadColumn('spotify_id', spotifyCandidates, bySpotify),
+      loadColumn(
+        'spotify_id_norm',
+        spotifyCandidates.map(normalizeSpotifyId),
+        bySpotifyNorm,
+      ),
+      loadColumn(
+        'isrc_norm',
+        requests.map((request) => normalizeIsrc(request.isrc)),
+        byIsrcNorm,
+      ),
+      loadColumn(
+        'match_key',
+        requests.map(
+          (request) => matchKeyFor(request.trackName, request.artistName),
+        ),
+        byMatchKey,
+      ),
+    ]);
 
-  Future<Set<String>> getAllSpotifyIds() async {
-    final db = await database;
-    final rows = await db.rawQuery(
-      'SELECT spotify_id FROM history WHERE spotify_id IS NOT NULL AND spotify_id != ""',
-    );
-    return rows.map((r) => r['spotify_id'] as String).toSet();
+    return requests
+        .map((request) {
+          for (final candidate in spotifyLookupCandidates(request.spotifyId)) {
+            final match =
+                bySpotify[candidate] ??
+                bySpotifyNorm[normalizeSpotifyId(candidate)];
+            if (match != null) return match;
+          }
+          final byIsrc = byIsrcNorm[normalizeIsrc(request.isrc)];
+          if (byIsrc != null) return byIsrc;
+          return byMatchKey[matchKeyFor(request.trackName, request.artistName)];
+        })
+        .toList(growable: false);
   }
 
   Future<void> deleteById(String id) async {
@@ -825,37 +825,17 @@ class HistoryDatabase {
     });
   }
 
-  Future<int> deleteBySpotifyId(String spotifyId) async {
-    final db = await database;
-    final rows = await db.query(
-      'history',
-      columns: ['id'],
-      where: 'spotify_id = ?',
-      whereArgs: [spotifyId],
-    );
-    final ids = rows.map((row) => row['id'] as String).toList(growable: false);
-    return db.transaction<int>((txn) async {
-      for (final id in ids) {
-        await txn.delete(
-          'history_path_keys',
-          where: 'item_id = ?',
-          whereArgs: [id],
-        );
-      }
-      return txn.delete(
-        'history',
-        where: 'spotify_id = ?',
-        whereArgs: [spotifyId],
-      );
-    });
-  }
-
   Future<void> clearAll() async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete('history_path_keys');
       await txn.delete('history');
     });
+    // Return freed pages to the OS (no-op unless the file was created with
+    // auto_vacuum enabled).
+    try {
+      await db.execute('PRAGMA incremental_vacuum');
+    } catch (_) {}
     _log.i('Cleared all history');
   }
 
@@ -874,7 +854,7 @@ class HistoryDatabase {
       FROM (
         SELECT COUNT(*) AS track_count
         FROM history
-        GROUP BY LOWER(album_name), LOWER(COALESCE(album_artist, artist_name))
+        GROUP BY album_key
       )
       ''');
     final row = rows.isEmpty ? const <String, Object?>{} : rows.first;
@@ -922,6 +902,7 @@ class HistoryDatabase {
     String id,
     String newFilePath, {
     String? newSafFileName,
+    String? newSafRelativeDir,
     String? newQuality,
     int? newBitDepth,
     int? newSampleRate,
@@ -933,6 +914,9 @@ class HistoryDatabase {
     final values = <String, dynamic>{'file_path': newFilePath};
     if (newSafFileName != null) {
       values['saf_file_name'] = newSafFileName;
+    }
+    if (newSafRelativeDir != null) {
+      values['saf_relative_dir'] = newSafRelativeDir;
     }
     if (newQuality != null) {
       values['quality'] = newQuality;
@@ -994,16 +978,6 @@ class HistoryDatabase {
       'SELECT file_path FROM history WHERE file_path IS NOT NULL AND file_path != ""',
     );
     return rows.map((r) => r['file_path'] as String).toSet();
-  }
-
-  Future<List<Map<String, dynamic>>> getAllEntriesWithPaths() async {
-    final db = await database;
-    final rows = await db.rawQuery('''
-      SELECT id, file_path, storage_mode, download_tree_uri, saf_relative_dir, saf_file_name
-      FROM history 
-      WHERE file_path IS NOT NULL AND file_path != ""
-    ''');
-    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
   Future<List<Map<String, dynamic>>> getEntriesWithPathsPage({

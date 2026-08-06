@@ -2,9 +2,14 @@ import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:spotiflac_android/models/theme_settings.dart';
+import 'package:spotiflac_android/theme/app_tokens.dart';
 
 class AppTheme {
   static const Color defaultSeedColor = Color(kDefaultSeedColor);
+
+  /// Component radii resolve from the same tokens the widgets read, so the
+  /// scale cannot drift between `ThemeData` and hand-built containers.
+  static const AppTokens _tokens = AppTokens.standard;
 
   // Override Flutter's default page transitions. Recent Flutter defaults the
   // Android route transition to PredictiveBackPageTransitionsBuilder, whose
@@ -14,13 +19,14 @@ class AppTheme {
   // regression introduced by the Flutter upgrade. Forcing a non-predictive
   // builder restores the correct back order (close modal, then pop page), at the
   // cost of the predictive-back preview animation.
-  static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(
-    builders: <TargetPlatform, PageTransitionsBuilder>{
-      TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-    },
-  );
+  static const PageTransitionsTheme _pageTransitionsTheme =
+      PageTransitionsTheme(
+        builders: <TargetPlatform, PageTransitionsBuilder>{
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      );
 
   static ThemeData light({ColorScheme? dynamicScheme, Color? seedColor}) {
     final scheme =
@@ -44,12 +50,14 @@ class AppTheme {
       inputDecorationTheme: _inputDecorationTheme(scheme),
       listTileTheme: _listTileTheme(scheme),
       dialogTheme: _dialogTheme(scheme),
+      bottomSheetTheme: _bottomSheetTheme,
       navigationBarTheme: _navigationBarTheme(scheme),
       snackBarTheme: _snackBarTheme(scheme),
       progressIndicatorTheme: _progressIndicatorTheme(scheme),
       switchTheme: _switchTheme(scheme),
       chipTheme: _chipTheme(scheme),
       dividerTheme: _dividerTheme(scheme),
+      extensions: const <ThemeExtension<dynamic>>[AppTokens.standard],
       fontFamily: 'Google Sans Flex',
     );
   }
@@ -81,12 +89,14 @@ class AppTheme {
       inputDecorationTheme: _inputDecorationTheme(scheme),
       listTileTheme: _listTileTheme(scheme),
       dialogTheme: _dialogTheme(scheme),
+      bottomSheetTheme: _bottomSheetTheme,
       navigationBarTheme: _navigationBarTheme(scheme, isAmoled: isAmoled),
       snackBarTheme: _snackBarTheme(scheme),
       progressIndicatorTheme: _progressIndicatorTheme(scheme),
       switchTheme: _switchTheme(scheme),
       chipTheme: _chipTheme(scheme),
       dividerTheme: _dividerTheme(scheme),
+      extensions: const <ThemeExtension<dynamic>>[AppTokens.standard],
       fontFamily: 'Google Sans Flex',
     );
   }
@@ -122,7 +132,9 @@ class AppTheme {
 
   static CardThemeData _cardTheme(ColorScheme scheme) => CardThemeData(
     elevation: 0,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(_tokens.radiusControl),
+    ),
     color: scheme.surfaceContainerLow,
     surfaceTintColor: scheme.surfaceTint,
   );
@@ -132,7 +144,7 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           elevation: 1,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_tokens.radiusControl),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         ),
@@ -142,7 +154,7 @@ class AppTheme {
       FilledButtonThemeData(
         style: FilledButton.styleFrom(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_tokens.radiusControl),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         ),
@@ -152,7 +164,7 @@ class AppTheme {
       OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_tokens.radiusControl),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         ),
@@ -162,7 +174,7 @@ class AppTheme {
       TextButtonThemeData(
         style: TextButton.styleFrom(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_tokens.radiusControl),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         ),
@@ -171,7 +183,9 @@ class AppTheme {
   static FloatingActionButtonThemeData _fabTheme(ColorScheme scheme) =>
       FloatingActionButtonThemeData(
         elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
+        ),
         backgroundColor: scheme.primaryContainer,
         foregroundColor: scheme.onPrimaryContainer,
       );
@@ -181,19 +195,19 @@ class AppTheme {
         filled: true,
         fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
           borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
           borderSide: BorderSide(color: scheme.error, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -204,13 +218,26 @@ class AppTheme {
 
   static ListTileThemeData _listTileTheme(ColorScheme scheme) =>
       ListTileThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_tokens.radiusControl),
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       );
 
+  // Caps modal sheet width on tablets/landscape (no effect on phones, whose
+  // screens are narrower); Flutter centers the sheet when narrower than the
+  // screen. The shape is set here so no call site has to repeat it — every
+  // sheet inherits the token radius.
+  static final BottomSheetThemeData _bottomSheetTheme = BottomSheetThemeData(
+    constraints: const BoxConstraints(maxWidth: 640),
+    shape: _tokens.sheetShape,
+  );
+
   static DialogThemeData _dialogTheme(ColorScheme scheme) => DialogThemeData(
     elevation: 6,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(_tokens.radiusSheet),
+    ),
     backgroundColor: scheme.surfaceContainerHigh,
     surfaceTintColor: scheme.surfaceTint,
   );
@@ -229,7 +256,9 @@ class AppTheme {
   static SnackBarThemeData _snackBarTheme(ColorScheme scheme) =>
       SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_tokens.radiusThumb),
+        ),
         backgroundColor: scheme.inverseSurface,
         contentTextStyle: TextStyle(color: scheme.onInverseSurface),
       );
@@ -264,7 +293,9 @@ class AppTheme {
   );
 
   static ChipThemeData _chipTheme(ColorScheme scheme) => ChipThemeData(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(_tokens.radiusCard),
+    ),
     backgroundColor: scheme.surfaceContainerLow,
     selectedColor: scheme.secondaryContainer,
   );

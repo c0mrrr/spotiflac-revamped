@@ -118,6 +118,8 @@ class UserPlaylistCollection {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<CollectionTrackEntry> tracks;
+  final String? previewCover;
+  final bool tracksLoaded;
   final Set<String> _trackKeys;
 
   UserPlaylistCollection({
@@ -127,6 +129,8 @@ class UserPlaylistCollection {
     required this.createdAt,
     required this.updatedAt,
     required this.tracks,
+    this.previewCover,
+    this.tracksLoaded = true,
     Set<String>? trackKeys,
   }) : _trackKeys = trackKeys ?? tracks.map((entry) => entry.key).toSet();
 
@@ -137,6 +141,8 @@ class UserPlaylistCollection {
     DateTime? createdAt,
     DateTime? updatedAt,
     List<CollectionTrackEntry>? tracks,
+    String? previewCover,
+    bool? tracksLoaded,
   }) {
     final nextTracks = tracks ?? this.tracks;
     final keepTrackIndex = identical(nextTracks, this.tracks);
@@ -149,6 +155,10 @@ class UserPlaylistCollection {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       tracks: nextTracks,
+      previewCover: previewCover ?? this.previewCover,
+      tracksLoaded:
+          tracksLoaded ??
+          (identical(nextTracks, this.tracks) ? this.tracksLoaded : true),
       trackKeys: keepTrackIndex ? _trackKeys : null,
     );
   }
@@ -161,6 +171,8 @@ class UserPlaylistCollection {
   bool containsTrackKey(String trackKey) {
     return _trackKeys.contains(trackKey);
   }
+
+  int get trackCount => _trackKeys.length;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -409,9 +421,7 @@ class LibraryCollectionsState {
 Set<String> _buildPlaylistTrackKeys(List<UserPlaylistCollection> playlists) {
   final keys = <String>{};
   for (final playlist in playlists) {
-    for (final entry in playlist.tracks) {
-      keys.add(entry.key);
-    }
+    keys.addAll(playlist._trackKeys);
   }
   return keys;
 }
@@ -429,6 +439,7 @@ class PlaylistAddBatchResult {
 class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
   final LibraryCollectionsDatabase _db = LibraryCollectionsDatabase.instance;
   Future<void>? _loadFuture;
+  final Map<String, Future<void>> _playlistLoadFutures = {};
 
   void _invalidatePlaylistPickerSummaries() {
     ref.invalidate(libraryPlaylistPickerSummariesProvider);
@@ -469,13 +480,13 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         }
       }
 
-      final tracksByPlaylist = <String, List<CollectionTrackEntry>>{};
+      final trackKeysByPlaylist = <String, Set<String>>{};
       for (final row in snapshot.playlistTrackRows) {
         final playlistId = row['playlist_id'] as String?;
         if (playlistId == null || playlistId.isEmpty) continue;
-        final parsed = _parseTrackEntryRow(row);
-        if (parsed == null) continue;
-        tracksByPlaylist.putIfAbsent(playlistId, () => []).add(parsed);
+        final trackKey = row['track_key'] as String?;
+        if (trackKey == null || trackKey.isEmpty) continue;
+        trackKeysByPlaylist.putIfAbsent(playlistId, () => {}).add(trackKey);
       }
 
       final playlists = <UserPlaylistCollection>[];
@@ -488,6 +499,16 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         final createdAt =
             DateTime.tryParse(createdAtRaw ?? '') ?? DateTime.now();
         final updatedAt = DateTime.tryParse(updatedAtRaw ?? '') ?? createdAt;
+        String? previewCover;
+        final previewTrackJson = row['preview_track_json'] as String?;
+        if (previewTrackJson != null && previewTrackJson.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(previewTrackJson);
+            if (decoded is Map) {
+              previewCover = decoded['coverUrl']?.toString();
+            }
+          } catch (_) {}
+        }
 
         playlists.add(
           UserPlaylistCollection(
@@ -496,7 +517,10 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
             coverImagePath: row['cover_image_path'] as String?,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            tracks: tracksByPlaylist[id] ?? const <CollectionTrackEntry>[],
+            tracks: const <CollectionTrackEntry>[],
+            previewCover: previewCover,
+            tracksLoaded: false,
+            trackKeys: trackKeysByPlaylist[id],
           ),
         );
       }
@@ -516,6 +540,38 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
   Future<void> _ensureLoaded() async {
     if (state.isLoaded) return;
     await (_loadFuture ?? _load());
+  }
+
+  Future<void> ensurePlaylistLoaded(String playlistId) async {
+    await _ensureLoaded();
+    final playlist = state.playlistById(playlistId);
+    if (playlist == null || playlist.tracksLoaded) return;
+
+    final pending = _playlistLoadFutures[playlistId];
+    if (pending != null) return pending;
+    final load = () async {
+      final rows = await _db.loadPlaylistTracks(playlistId);
+      final tracks = rows
+          .map(_parseTrackEntryRow)
+          .whereType<CollectionTrackEntry>()
+          .toList(growable: false);
+      _replacePlaylistById(
+        playlistId,
+        (current) => current.copyWith(tracks: tracks, tracksLoaded: true),
+      );
+    }();
+    _playlistLoadFutures[playlistId] = load;
+    try {
+      await load;
+    } finally {
+      if (identical(_playlistLoadFutures[playlistId], load)) {
+        _playlistLoadFutures.remove(playlistId);
+      }
+    }
+  }
+
+  Future<void> ensurePlaylistsLoaded(Iterable<String> playlistIds) async {
+    await Future.wait(playlistIds.toSet().map(ensurePlaylistLoaded));
   }
 
   CollectionTrackEntry? _parseTrackEntryRow(Map<String, dynamic> row) {
@@ -584,15 +640,30 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     return true;
   }
 
-  Future<bool> toggleWishlist(Track track) async {
+  Future<bool> _toggleTrackEntry(
+    Track track, {
+    required bool Function(String key) contains,
+    required List<CollectionTrackEntry> Function(LibraryCollectionsState state)
+    select,
+    required LibraryCollectionsState Function(List<CollectionTrackEntry> list)
+    withList,
+    required Future<void> Function(String key) dbDelete,
+    required Future<void> Function({
+      required String trackKey,
+      required String trackJson,
+      required String addedAt,
+    })
+    dbUpsert,
+  }) async {
     await _ensureLoaded();
     final key = trackCollectionKey(track);
-    if (state.containsWishlistKey(key)) {
-      await _db.deleteWishlistEntry(key);
-      final updated = state.wishlist
-          .where((entry) => entry.key != key)
-          .toList(growable: false);
-      state = state.copyWith(wishlist: updated);
+    if (contains(key)) {
+      await dbDelete(key);
+      state = withList(
+        select(
+          state,
+        ).where((entry) => entry.key != key).toList(growable: false),
+      );
       return false;
     }
 
@@ -601,42 +672,32 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
       track: track,
       addedAt: DateTime.now(),
     );
-    await _db.upsertWishlistEntry(
+    await dbUpsert(
       trackKey: key,
       trackJson: jsonEncode(track.toJson()),
       addedAt: entry.addedAt.toIso8601String(),
     );
-    final updated = [entry, ...state.wishlist];
-    state = state.copyWith(wishlist: updated);
+    state = withList([entry, ...select(state)]);
     return true;
   }
 
-  Future<bool> toggleLoved(Track track) async {
-    await _ensureLoaded();
-    final key = trackCollectionKey(track);
-    if (state.containsLovedKey(key)) {
-      await _db.deleteLovedEntry(key);
-      final updated = state.loved
-          .where((entry) => entry.key != key)
-          .toList(growable: false);
-      state = state.copyWith(loved: updated);
-      return false;
-    }
+  Future<bool> toggleWishlist(Track track) => _toggleTrackEntry(
+    track,
+    contains: (key) => state.containsWishlistKey(key),
+    select: (state) => state.wishlist,
+    withList: (list) => state.copyWith(wishlist: list),
+    dbDelete: _db.deleteWishlistEntry,
+    dbUpsert: _db.upsertWishlistEntry,
+  );
 
-    final entry = CollectionTrackEntry(
-      key: key,
-      track: track,
-      addedAt: DateTime.now(),
-    );
-    await _db.upsertLovedEntry(
-      trackKey: key,
-      trackJson: jsonEncode(track.toJson()),
-      addedAt: entry.addedAt.toIso8601String(),
-    );
-    final updated = [entry, ...state.loved];
-    state = state.copyWith(loved: updated);
-    return true;
-  }
+  Future<bool> toggleLoved(Track track) => _toggleTrackEntry(
+    track,
+    contains: (key) => state.containsLovedKey(key),
+    select: (state) => state.loved,
+    withList: (list) => state.copyWith(loved: list),
+    dbDelete: _db.deleteLovedEntry,
+    dbUpsert: _db.upsertLovedEntry,
+  );
 
   Future<bool> toggleFavoriteArtist({
     required String artistId,
@@ -654,11 +715,7 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         ? trimmedProviderId
         : (source.isNotEmpty && source != 'builtin' ? source : null);
     if (state.containsFavoriteArtistKey(key)) {
-      await _db.deleteFavoriteArtistEntry(key);
-      final updated = state.favoriteArtists
-          .where((entry) => entry.key != key)
-          .toList(growable: false);
-      state = state.copyWith(favoriteArtists: updated);
+      await removeFavoriteArtist(key);
       return false;
     }
 
@@ -680,38 +737,51 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     return true;
   }
 
-  Future<void> removeFavoriteArtist(String artistKey) async {
+  Future<void> _removeEntry<T>(
+    String key, {
+    required bool Function(String key) contains,
+    required List<T> Function(LibraryCollectionsState state) select,
+    required String Function(T entry) keyOf,
+    required LibraryCollectionsState Function(List<T> list) withList,
+    required Future<void> Function(String key) dbDelete,
+  }) async {
     await _ensureLoaded();
-    if (!state.containsFavoriteArtistKey(artistKey)) return;
+    if (!contains(key)) return;
 
-    await _db.deleteFavoriteArtistEntry(artistKey);
-    final updated = state.favoriteArtists
-        .where((entry) => entry.key != artistKey)
-        .toList(growable: false);
-    state = state.copyWith(favoriteArtists: updated);
+    await dbDelete(key);
+    state = withList(
+      select(
+        state,
+      ).where((entry) => keyOf(entry) != key).toList(growable: false),
+    );
   }
 
-  Future<void> removeFromWishlist(String trackKey) async {
-    await _ensureLoaded();
-    if (!state.containsWishlistKey(trackKey)) return;
+  Future<void> removeFavoriteArtist(String artistKey) => _removeEntry(
+    artistKey,
+    contains: (key) => state.containsFavoriteArtistKey(key),
+    select: (state) => state.favoriteArtists,
+    keyOf: (entry) => entry.key,
+    withList: (list) => state.copyWith(favoriteArtists: list),
+    dbDelete: _db.deleteFavoriteArtistEntry,
+  );
 
-    await _db.deleteWishlistEntry(trackKey);
-    final updated = state.wishlist
-        .where((entry) => entry.key != trackKey)
-        .toList(growable: false);
-    state = state.copyWith(wishlist: updated);
-  }
+  Future<void> removeFromWishlist(String trackKey) => _removeEntry(
+    trackKey,
+    contains: (key) => state.containsWishlistKey(key),
+    select: (state) => state.wishlist,
+    keyOf: (entry) => entry.key,
+    withList: (list) => state.copyWith(wishlist: list),
+    dbDelete: _db.deleteWishlistEntry,
+  );
 
-  Future<void> removeFromLoved(String trackKey) async {
-    await _ensureLoaded();
-    if (!state.containsLovedKey(trackKey)) return;
-
-    await _db.deleteLovedEntry(trackKey);
-    final updated = state.loved
-        .where((entry) => entry.key != trackKey)
-        .toList(growable: false);
-    state = state.copyWith(loved: updated);
-  }
+  Future<void> removeFromLoved(String trackKey) => _removeEntry(
+    trackKey,
+    contains: (key) => state.containsLovedKey(key),
+    select: (state) => state.loved,
+    keyOf: (entry) => entry.key,
+    withList: (list) => state.copyWith(loved: list),
+    dbDelete: _db.deleteLovedEntry,
+  );
 
   Future<String> createPlaylist(String name) async {
     await _ensureLoaded();
@@ -771,11 +841,14 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
 
   Future<bool> addTrackToPlaylist(String playlistId, Track track) async {
     await _ensureLoaded();
-    final playlist = state.playlistById(playlistId);
+    var playlist = state.playlistById(playlistId);
     if (playlist == null) return false;
 
     final key = trackCollectionKey(track);
     if (playlist.containsTrackKey(key)) return false;
+    await ensurePlaylistLoaded(playlistId);
+    playlist = state.playlistById(playlistId);
+    if (playlist == null) return false;
 
     final now = DateTime.now();
     final entry = CollectionTrackEntry(key: key, track: track, addedAt: now);
@@ -789,7 +862,7 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     final changed = _replacePlaylistById(playlistId, (playlist) {
       if (playlist.containsTrackKey(key)) return playlist;
       return playlist.copyWith(
-        tracks: [entry, ...playlist.tracks],
+        tracks: [...playlist.tracks, entry],
         updatedAt: now,
       );
     });
@@ -803,6 +876,7 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     Iterable<Track> tracks,
   ) async {
     await _ensureLoaded();
+    await ensurePlaylistLoaded(playlistId);
     final playlist = state.playlistById(playlistId);
     if (playlist == null) {
       return const PlaylistAddBatchResult(
@@ -850,7 +924,8 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     );
     final changed = _replacePlaylistById(playlistId, (current) {
       return current.copyWith(
-        tracks: [...entriesToAdd.reversed, ...current.tracks],
+        // Append in playlist order, matching the ASC snapshot ordering.
+        tracks: [...current.tracks, ...entriesToAdd],
         updatedAt: now,
       );
     });
@@ -872,8 +947,11 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     String trackKey,
   ) async {
     await _ensureLoaded();
-    final playlist = state.playlistById(playlistId);
+    var playlist = state.playlistById(playlistId);
     if (playlist == null || !playlist.containsTrackKey(trackKey)) return;
+    await ensurePlaylistLoaded(playlistId);
+    playlist = state.playlistById(playlistId);
+    if (playlist == null) return;
 
     final now = DateTime.now();
     await _db.deletePlaylistTrack(
@@ -958,6 +1036,7 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
   /// favorite artists) for a backup, ensuring data is loaded first.
   Future<Map<String, dynamic>> exportCollections() async {
     await _ensureLoaded();
+    await ensurePlaylistsLoaded(state.playlists.map((playlist) => playlist.id));
     return state.toJson();
   }
 
@@ -1044,11 +1123,11 @@ final libraryCollectionsProvider =
       LibraryCollectionsNotifier.new,
     );
 
-final libraryPlaylistPickerSummariesProvider =
-    FutureProvider.family<
-      List<PlaylistPickerSummary>,
-      PlaylistPickerSummaryRequest
-    >((ref, request) async {
+final libraryPlaylistPickerSummariesProvider = FutureProvider.autoDispose
+    .family<List<PlaylistPickerSummary>, PlaylistPickerSummaryRequest>((
+      ref,
+      request,
+    ) async {
       final db = LibraryCollectionsDatabase.instance;
       await db.migrateFromSharedPreferences();
       final rows = await db.loadPlaylistPickerSummaries(request.trackKeys);

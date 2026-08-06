@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/constants/app_info.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
@@ -14,56 +14,22 @@ class AboutPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
 
     return PopScope(
       canPop: true,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      context.l10n.aboutTitle,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
-            ),
+            AppSliverHeader.page(title: context.l10n.aboutTitle),
 
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: EdgeInsets.fromLTRB(
+                  16 + wideListInset(context),
+                  16,
+                  16 + wideListInset(context),
+                  8,
+                ),
                 child: _AppHeaderCard(),
               ),
             ),
@@ -553,6 +519,18 @@ class _TranslatorsSection extends StatelessWidget {
       language: 'French',
       flag: '🇫🇷',
     ),
+    _Translator(
+      name: 'BrandQc',
+      crowdinUsername: 'BrandQc',
+      language: 'French',
+      flag: '🇫🇷',
+    ),
+    _Translator(
+      name: 'blackgold8282',
+      crowdinUsername: 'blackgold8282',
+      language: 'Korean',
+      flag: '🇰🇷',
+    ),
   ];
 
   @override
@@ -663,7 +641,7 @@ class _AboutSettingsItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Column(
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         InkWell(
@@ -719,5 +697,6 @@ class _AboutSettingsItem extends StatelessWidget {
           ),
       ],
     );
+    return SettingsSearchTarget(label: title, child: content);
   }
 }

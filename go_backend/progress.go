@@ -3,6 +3,7 @@ package gobackend
 import (
 	"encoding/json"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -15,6 +16,7 @@ type DownloadProgress struct {
 	BytesReceived int64   `json:"bytes_received"`
 	IsDownloading bool    `json:"is_downloading"`
 	Status        string  `json:"status"`
+	Stage         string  `json:"stage,omitempty"`
 }
 
 type ItemProgress struct {
@@ -25,6 +27,7 @@ type ItemProgress struct {
 	SpeedMBps     float64 `json:"speed_mbps"`
 	IsDownloading bool    `json:"is_downloading"`
 	Status        string  `json:"status"`
+	Stage         string  `json:"stage,omitempty"`
 	revision      int64
 }
 
@@ -53,6 +56,7 @@ type progressBridgeState struct {
 	speedDeciMBps int64
 	downloading   bool
 	status        string
+	stage         string
 }
 
 var (
@@ -94,6 +98,7 @@ func itemProgressBridgeState(item *ItemProgress) progressBridgeState {
 		speedDeciMBps: int64(math.Round(speed * 10)),
 		downloading:   item.IsDownloading,
 		status:        item.Status,
+		stage:         item.Stage,
 	}
 }
 
@@ -102,24 +107,6 @@ func markMultiProgressDirtyIfChangedLocked(item *ItemProgress, before progressBr
 		item.revision = nextMultiProgressSeqLocked()
 		markMultiProgressDirtyLocked()
 	}
-}
-
-func getProgress() DownloadProgress {
-	multiMu.RLock()
-	defer multiMu.RUnlock()
-
-	for _, item := range multiProgress.Items {
-		return DownloadProgress{
-			CurrentFile:   item.ItemID,
-			Progress:      item.Progress * 100,
-			BytesTotal:    item.BytesTotal,
-			BytesReceived: item.BytesReceived,
-			IsDownloading: item.IsDownloading,
-			Status:        item.Status,
-		}
-	}
-
-	return DownloadProgress{}
 }
 
 func GetMultiProgress() string {
@@ -193,17 +180,6 @@ func GetMultiProgressDelta(sinceSeq int64) string {
 	return string(jsonBytes)
 }
 
-func GetItemProgress(itemID string) string {
-	multiMu.RLock()
-	defer multiMu.RUnlock()
-
-	if item, ok := multiProgress.Items[itemID]; ok {
-		jsonBytes, _ := json.Marshal(item)
-		return string(jsonBytes)
-	}
-	return "{}"
-}
-
 func StartItemProgress(itemID string) {
 	multiMu.Lock()
 	defer multiMu.Unlock()
@@ -222,6 +198,10 @@ func StartItemProgress(itemID string) {
 }
 
 func SetItemPreparing(itemID string) {
+	SetItemPreparingStage(itemID, "")
+}
+
+func SetItemPreparingStage(itemID, stage string) {
 	multiMu.Lock()
 	defer multiMu.Unlock()
 
@@ -233,6 +213,7 @@ func SetItemPreparing(itemID string) {
 		item.SpeedMBps = 0
 		item.IsDownloading = true
 		item.Status = itemProgressStatusPreparing
+		item.Stage = stage
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
 }
@@ -245,6 +226,7 @@ func SetItemDownloading(itemID string) {
 		before := itemProgressBridgeState(item)
 		item.IsDownloading = true
 		item.Status = itemProgressStatusDownloading
+		item.Stage = ""
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
 }
@@ -273,6 +255,7 @@ func SetItemBytesReceived(itemID string, received int64) {
 		if received > 0 {
 			item.IsDownloading = true
 			item.Status = itemProgressStatusDownloading
+			item.Stage = ""
 		}
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
@@ -292,6 +275,7 @@ func SetItemBytesReceivedWithSpeed(itemID string, received int64, speedMBps floa
 		if received > 0 {
 			item.IsDownloading = true
 			item.Status = itemProgressStatusDownloading
+			item.Stage = ""
 		}
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
@@ -306,6 +290,7 @@ func CompleteItemProgress(itemID string) {
 		item.Progress = 1.0
 		item.IsDownloading = false
 		item.Status = itemProgressStatusCompleted
+		item.Stage = ""
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
 }
@@ -331,6 +316,7 @@ func SetItemProgress(itemID string, progress float64, bytesReceived, bytesTotal 
 		if hasByteProgress || progress >= 1 || item.Status == itemProgressStatusDownloading {
 			item.IsDownloading = true
 			item.Status = itemProgressStatusDownloading
+			item.Stage = ""
 		}
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
@@ -344,9 +330,15 @@ func SetItemFinalizing(itemID string) {
 		before := itemProgressBridgeState(item)
 		item.Progress = 1.0
 		item.Status = itemProgressStatusFinalizing
+		item.Stage = ""
 		markMultiProgressDirtyIfChangedLocked(item, before)
 	}
 }
+
+// maxRemovedProgressEntries bounds the removal tombstones a long batch session
+// can accumulate; pruning bumps multiProgressReset so lagging delta clients
+// fall back to a full resync instead of missing removals.
+const maxRemovedProgressEntries = 512
 
 func RemoveItemProgress(itemID string) {
 	multiMu.Lock()
@@ -355,8 +347,39 @@ func RemoveItemProgress(itemID string) {
 	if _, ok := multiProgress.Items[itemID]; ok {
 		delete(multiProgress.Items, itemID)
 		removedProgressSeq[itemID] = nextMultiProgressSeqLocked()
+		if len(removedProgressSeq) > maxRemovedProgressEntries {
+			pruneRemovedProgressLocked()
+		}
 	}
 	markMultiProgressDirtyLocked()
+}
+
+func pruneRemovedProgressLocked() {
+	revisions := make([]int64, 0, len(removedProgressSeq))
+	for _, revision := range removedProgressSeq {
+		revisions = append(revisions, revision)
+	}
+	sort.Slice(revisions, func(i, j int) bool { return revisions[i] < revisions[j] })
+	cutoff := revisions[len(revisions)/2]
+	for id, revision := range removedProgressSeq {
+		if revision <= cutoff {
+			delete(removedProgressSeq, id)
+		}
+	}
+	if cutoff > multiProgressReset {
+		multiProgressReset = cutoff
+	}
+}
+
+func GetItemProgress(itemID string) string {
+	multiMu.RLock()
+	defer multiMu.RUnlock()
+
+	if item, ok := multiProgress.Items[itemID]; ok {
+		jsonBytes, _ := json.Marshal(item)
+		return string(jsonBytes)
+	}
+	return "{}"
 }
 
 func ClearAllItemProgress() {
@@ -369,7 +392,7 @@ func ClearAllItemProgress() {
 	markMultiProgressDirtyLocked()
 }
 
-func setDownloadDir(path string) error {
+func setDownloadDir(_ string) error {
 	return nil
 }
 

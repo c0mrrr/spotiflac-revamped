@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/app_bottom_sheet.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/utils/audio_conversion_utils.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
@@ -9,7 +10,15 @@ class BatchConvertSheet extends StatefulWidget {
   final List<String> formats;
   final String title;
   final String? subtitle;
-  final String confirmLabel;
+  final String? confirmLabel;
+  final String Function(
+    String format,
+    String bitrate,
+    bool isLosslessTarget,
+    LosslessConversionQuality losslessQuality,
+  )?
+  confirmLabelBuilder;
+  final bool sourceIsLossless;
   final int? sourceBitDepth;
   final int? sourceSampleRate;
   final void Function(
@@ -17,6 +26,7 @@ class BatchConvertSheet extends StatefulWidget {
     String bitrate,
     LosslessConversionQuality losslessQuality,
     LosslessConversionProcessing losslessProcessing,
+    bool keepOriginal,
   )
   onConvert;
 
@@ -24,8 +34,10 @@ class BatchConvertSheet extends StatefulWidget {
     super.key,
     required this.formats,
     required this.title,
-    required this.confirmLabel,
     required this.onConvert,
+    this.confirmLabel,
+    this.confirmLabelBuilder,
+    this.sourceIsLossless = true,
     this.subtitle,
     this.sourceBitDepth,
     this.sourceSampleRate,
@@ -45,6 +57,7 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
   int? _selectedMaxSampleRate;
   String _selectedDither = 'none';
   String _selectedResampler = 'swr';
+  bool _keepOriginal = false;
 
   String _defaultBitrateForFormat(String format) {
     if (format == 'Opus') return '128k';
@@ -74,9 +87,7 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
     );
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
@@ -90,16 +101,7 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+                const AppSheetHandle(),
                 const SizedBox(height: 18),
                 Text(
                   widget.title,
@@ -317,7 +319,7 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
                     ),
                   ),
 
-                if (_isLosslessTarget)
+                if (_isLosslessTarget && widget.sourceIsLossless)
                   Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 12),
@@ -360,6 +362,19 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
                     ),
                   ),
 
+                _card(
+                  cs,
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(context.l10n.trackConvertKeepOriginal),
+                    subtitle: Text(
+                      context.l10n.trackConvertKeepOriginalDescription,
+                    ),
+                    value: _keepOriginal,
+                    onChanged: (value) => setState(() => _keepOriginal = value),
+                  ),
+                ),
+
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -375,6 +390,7 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
                         dither: _selectedDither,
                         resampler: _selectedResampler,
                       ),
+                      _keepOriginal,
                     ),
                     icon: const Icon(Icons.swap_horiz),
                     style: FilledButton.styleFrom(
@@ -383,7 +399,18 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    label: Text(widget.confirmLabel),
+                    label: Text(
+                      widget.confirmLabelBuilder?.call(
+                            _selectedFormat,
+                            _selectedBitrate,
+                            _isLosslessTarget,
+                            LosslessConversionQuality(
+                              maxBitDepth: _selectedMaxBitDepth,
+                              maxSampleRate: _selectedMaxSampleRate,
+                            ),
+                          ) ??
+                          widget.confirmLabel!,
+                    ),
                   ),
                 ),
               ],
@@ -398,13 +425,16 @@ class _BatchConvertSheetState extends State<BatchConvertSheet> {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: settingsGroupColor(context),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: child,
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: Padding(padding: const EdgeInsets.all(16), child: child),
+      ),
     );
   }
 

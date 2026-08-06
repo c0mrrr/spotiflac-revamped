@@ -1,15 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:spotiflac_android/services/app_remote_config_service.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
 import 'package:spotiflac_android/widgets/donate_icons.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class DonatePage extends StatefulWidget {
-  const DonatePage({super.key});
+  final AppRemoteConfigService? remoteConfigService;
+
+  const DonatePage({super.key, this.remoteConfigService});
 
   @override
   State<DonatePage> createState() => _DonatePageState();
@@ -26,11 +28,11 @@ class _DonatePageState extends State<DonatePage> {
     if (_hasRequestedConfig) return;
 
     _hasRequestedConfig = true;
-    _loadConfig(Localizations.localeOf(context).toLanguageTag());
+    unawaited(_loadConfig(Localizations.localeOf(context).toLanguageTag()));
   }
 
   Future<void> _loadConfig(String locale) async {
-    final service = AppRemoteConfigService();
+    final service = widget.remoteConfigService ?? AppRemoteConfigService();
     final cached = await service.readCachedConfig();
     if (!mounted) return;
 
@@ -38,11 +40,9 @@ class _DonatePageState extends State<DonatePage> {
       _applyRemoteConfig(cached);
     }
 
-    unawaited(_refreshConfigCache(locale));
-  }
-
-  Future<void> _refreshConfigCache(String locale) async {
-    await AppRemoteConfigService().fetchConfigSnapshot(locale: locale);
+    final refreshed = await service.fetchConfigSnapshot(locale: locale);
+    if (!mounted || refreshed == null) return;
+    _applyRemoteConfig(refreshed);
   }
 
   void _applyRemoteConfig(RemoteConfigSnapshot snapshot) {
@@ -57,50 +57,19 @@ class _DonatePageState extends State<DonatePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            expandedHeight: 120 + topPadding,
-            collapsedHeight: kToolbarHeight,
-            floating: false,
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            leading: IconButton(
-              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
-            flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-              builder: (context, constraints) {
-                final maxHeight = 120 + topPadding;
-                final minHeight = kToolbarHeight + topPadding;
-                final expandRatio =
-                    ((constraints.maxHeight - minHeight) /
-                            (maxHeight - minHeight))
-                        .clamp(0.0, 1.0);
-                final leftPadding = 56 - (32 * expandRatio);
-                return FlexibleSpaceBar(
-                  expandedTitleScale: 1.0,
-                  titlePadding: EdgeInsets.only(left: leftPadding, bottom: 16),
-                  title: Text(
-                    'Donate',
-                    style: TextStyle(
-                      fontSize: 20 + (8 * expandRatio),
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                );
-              },
-            )]),
-          ),
+          AppSliverHeader.page(title: 'Donate'),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16 + wideListInset(context),
+                16,
+                16 + wideListInset(context),
+                16,
+              ),
               child: Column(
                 children: [
                   _DonateLinksCard(colorScheme: colorScheme, config: _config),

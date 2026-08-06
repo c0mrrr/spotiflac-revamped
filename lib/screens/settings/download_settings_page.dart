@@ -1,14 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
 import 'package:spotiflac_android/screens/settings/download_fallback_extensions_page.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class DownloadSettingsPage extends ConsumerStatefulWidget {
   const DownloadSettingsPage({super.key});
@@ -50,53 +49,13 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
               )
         : false;
     final nativeWorkerAvailable = Platform.isAndroid && hasDownloadExtensions;
-    final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
 
     return PopScope(
       canPop: true,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      context.l10n.settingsDownload,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
-            ),
+            AppSliverHeader.page(title: context.l10n.settingsDownload),
 
             SliverToBoxAdapter(
               child: SettingsSectionHeader(title: context.l10n.sectionService),
@@ -196,11 +155,24 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                       settings.downloadNetworkMode,
                     ),
                   ),
+                  SettingsItem(
+                    icon: Icons.dynamic_feed_outlined,
+                    title: context.l10n.settingsConcurrentDownloads,
+                    subtitle: settings.concurrentDownloads <= 1
+                        ? context.l10n.concurrentDownloadsOne
+                        : context.l10n.concurrentDownloadsCount(
+                            settings.concurrentDownloads,
+                          ),
+                    onTap: () => _showConcurrentDownloadsPicker(
+                      context,
+                      ref,
+                      settings.concurrentDownloads,
+                    ),
+                  ),
                   if (Platform.isAndroid)
                     SettingsSwitchItem(
                       icon: Icons.downloading_outlined,
                       title: context.l10n.downloadNativeWorker,
-                      titleTrailing: BetaBadge(label: context.l10n.badgeBeta),
                       subtitle: hasDownloadExtensions
                           ? context.l10n.downloadNativeWorkerSubtitle
                           : context.l10n.extensionsNoDownloadProvider,
@@ -439,9 +411,6 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
       context: context,
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -538,9 +507,6 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
       context: context,
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -592,6 +558,70 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                 Navigator.pop(context);
               },
             ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showConcurrentDownloadsPicker(
+    BuildContext context,
+    WidgetRef ref,
+    int current,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: colorScheme.surfaceContainerHigh,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: Text(
+                context.l10n.settingsConcurrentDownloads,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Text(
+                context.l10n.settingsConcurrentDownloadsSubtitle,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            for (final count in const [1, 2, 3])
+              ListTile(
+                leading: Icon(
+                  count == 1
+                      ? Icons.looks_one_outlined
+                      : count == 2
+                      ? Icons.looks_two_outlined
+                      : Icons.looks_3_outlined,
+                ),
+                title: Text(
+                  count == 1
+                      ? context.l10n.concurrentDownloadsOne
+                      : context.l10n.concurrentDownloadsCount(count),
+                ),
+                trailing: current == count
+                    ? Icon(Icons.check, color: colorScheme.primary)
+                    : null,
+                onTap: () {
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setConcurrentDownloads(count);
+                  Navigator.pop(context);
+                },
+              ),
             const SizedBox(height: 16),
           ],
         ),
@@ -796,60 +826,140 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      builder: (context) => _RegionPickerSheet(
+        regions: regions,
+        selected: normalizedCurrent,
+        countryNameOf: (context, code) => _regionCountryName(context, code),
+        onSelected: (code) {
+          ref.read(settingsProvider.notifier).setSongLinkRegion(code);
+          Navigator.pop(context);
+        },
       ),
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.7,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                child: Text(
-                  context.l10n.downloadSongLinkRegion,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+    );
+  }
+}
+
+/// Searchable region list.
+///
+/// The picker previously rendered ~190 ISO codes as a flat list with no filter,
+/// so finding a country meant scrolling blind — only a handful of codes have a
+/// localized name to recognize them by.
+class _RegionPickerSheet extends StatefulWidget {
+  const _RegionPickerSheet({
+    required this.regions,
+    required this.selected,
+    required this.countryNameOf,
+    required this.onSelected,
+  });
+
+  final List<String> regions;
+  final String selected;
+  final String Function(BuildContext context, String code) countryNameOf;
+  final ValueChanged<String> onSelected;
+
+  @override
+  State<_RegionPickerSheet> createState() => _RegionPickerSheetState();
+}
+
+class _RegionPickerSheetState extends State<_RegionPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final query = _query.trim().toLowerCase();
+    final matches = query.isEmpty
+        ? widget.regions
+        : widget.regions.where((code) {
+            if (code.toLowerCase().contains(query)) return true;
+            return widget
+                .countryNameOf(context, code)
+                .toLowerCase()
+                .contains(query);
+          }).toList();
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.7,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: Text(
+                context.l10n.downloadSongLinkRegion,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(
+                context.l10n.downloadSongLinkRegionDesc,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                child: Text(
-                  context.l10n.downloadSongLinkRegionDesc,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: TextField(
+                controller: _searchController,
+                autofocus: false,
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _query = value),
+                decoration: InputDecoration(
+                  hintText: MaterialLocalizations.of(context).searchFieldLabel,
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: context.l10n.dialogClear,
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                        ),
                 ),
               ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: regions.length,
-                  itemBuilder: (context, index) {
-                    final code = regions[index];
-                    final isSelected = code == normalizedCurrent;
-                    final countryName = _regionCountryName(context, code);
-                    return ListTile(
-                      title: Text(code),
-                      subtitle: countryName != code
-                          ? Text(countryName)
-                          : null,
-                      trailing: isSelected
-                          ? Icon(Icons.check, color: colorScheme.primary)
-                          : null,
-                      onTap: () {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .setSongLinkRegion(code);
-                        Navigator.pop(context);
+            ),
+            Expanded(
+              child: matches.isEmpty
+                  ? Center(
+                      child: Text(
+                        context.l10n.searchEmptyResultSubtitle,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: matches.length,
+                      itemBuilder: (context, index) {
+                        final code = matches[index];
+                        final isSelected = code == widget.selected;
+                        final countryName = widget.countryNameOf(context, code);
+                        return ListTile(
+                          title: Text(countryName != code ? countryName : code),
+                          subtitle: countryName != code ? Text(code) : null,
+                          trailing: isSelected
+                              ? Icon(Icons.check, color: colorScheme.primary)
+                              : null,
+                          onTap: () => widget.onSelected(code),
+                        );
                       },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+                    ),
+            ),
+          ],
         ),
       ),
     );
@@ -935,7 +1045,12 @@ class _ServiceSelector extends ConsumerWidget {
           : LayoutBuilder(
               builder: (context, constraints) {
                 const spacing = 8.0;
-                final chipWidth = (constraints.maxWidth - spacing) / 2;
+                final columns = (constraints.maxWidth / 320).floor().clamp(
+                  2,
+                  4,
+                );
+                final chipWidth =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
                 return Wrap(
                   spacing: spacing,
                   runSpacing: spacing,
@@ -943,7 +1058,8 @@ class _ServiceSelector extends ConsumerWidget {
                     for (final extension in extensionProviders)
                       SizedBox(
                         width: chipWidth,
-                        child: _ServiceChip(
+                        child: SettingsChoiceChip(
+                          layout: SettingsChipLayout.column,
                           icon: Icons.extension,
                           label: extension.displayName,
                           isSelected: effectiveService == extension.id,
@@ -958,80 +1074,8 @@ class _ServiceSelector extends ConsumerWidget {
   }
 }
 
-class _ServiceChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _ServiceChip({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselectedColor = isDark
-        ? Color.alphaBlend(
-            Colors.white.withValues(alpha: 0.05),
-            colorScheme.surface,
-          )
-        : colorScheme.surfaceContainerHigh;
-    return Material(
-      color: isSelected ? colorScheme.primaryContainer : unselectedColor,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? colorScheme.onPrimaryContainer
-                    : colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? colorScheme.onPrimaryContainer
-                      : colorScheme.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MetadataSourceSelector extends ConsumerWidget {
   const _MetadataSourceSelector();
-
-  Extension? _defaultSearchExtension(List<Extension> extensions) {
-    return extensions
-            .where(
-              (ext) =>
-                  ext.enabled &&
-                  ext.hasCustomSearch &&
-                  ext.searchBehavior?.primary == true,
-            )
-            .firstOrNull ??
-        extensions
-            .where((ext) => ext.enabled && ext.hasCustomSearch)
-            .firstOrNull;
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1040,7 +1084,7 @@ class _MetadataSourceSelector extends ConsumerWidget {
     final extState = ref.watch(extensionProvider);
 
     final rawSearchProvider = settings.searchProvider?.trim() ?? '';
-    final primarySearchExtension = _defaultSearchExtension(extState.extensions);
+    final primarySearchExtension = defaultSearchExtension(extState.extensions);
     final defaultProviderTarget =
         primarySearchExtension?.displayName ??
         context.l10n.extensionsNoCustomSearch;
@@ -1070,7 +1114,7 @@ class _MetadataSourceSelector extends ConsumerWidget {
       subtitle = context.l10n.optionsPrimaryProviderSubtitle;
     }
 
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1091,9 +1135,9 @@ class _MetadataSourceSelector extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _SettingsChoiceGrid(
+          SettingsChoiceGrid(
             children: [
-              _SettingsChoiceChip(
+              SettingsChoiceChip(
                 icon: Icons.auto_awesome,
                 label: defaultProviderLabel,
                 isSelected: searchProvider.isEmpty,
@@ -1103,7 +1147,7 @@ class _MetadataSourceSelector extends ConsumerWidget {
               for (final ext in extState.extensions.where(
                 (e) => e.enabled && e.hasCustomSearch,
               ))
-                _SettingsChoiceChip(
+                SettingsChoiceChip(
                   icon: Icons.extension,
                   label: ext.displayName,
                   isSelected: searchProvider == ext.id,
@@ -1116,93 +1160,9 @@ class _MetadataSourceSelector extends ConsumerWidget {
         ],
       ),
     );
-  }
-}
-
-class _SettingsChoiceGrid extends StatelessWidget {
-  final List<Widget> children;
-  const _SettingsChoiceGrid({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 8.0;
-        final chipWidth = (constraints.maxWidth - spacing) / 2;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final child in children)
-              SizedBox(width: chipWidth, child: child),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SettingsChoiceChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _SettingsChoiceChip({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselectedColor = isDark
-        ? Color.alphaBlend(
-            Colors.white.withValues(alpha: 0.05),
-            colorScheme.surface,
-          )
-        : colorScheme.surfaceContainerHigh;
-    return Material(
-      color: isSelected ? colorScheme.primaryContainer : unselectedColor,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected
-                    ? colorScheme.onPrimaryContainer
-                    : colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                    color: isSelected
-                        ? colorScheme.onPrimaryContainer
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return SettingsSearchTarget(
+      label: context.l10n.optionsPrimaryProvider,
+      child: content,
     );
   }
 }
@@ -1225,7 +1185,7 @@ class _DefaultSearchTabSelector extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final current = settings.defaultSearchTab;
 
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1244,7 +1204,7 @@ class _DefaultSearchTabSelector extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _SettingsChoiceGrid(
+          SettingsChoiceGrid(
             children: [
               for (final tab in const [
                 'all',
@@ -1253,7 +1213,7 @@ class _DefaultSearchTabSelector extends ConsumerWidget {
                 'album',
                 'playlist',
               ])
-                _SettingsChoiceChip(
+                SettingsChoiceChip(
                   icon: switch (tab) {
                     'track' => Icons.music_note,
                     'artist' => Icons.person,
@@ -1271,6 +1231,10 @@ class _DefaultSearchTabSelector extends ConsumerWidget {
           ),
         ],
       ),
+    );
+    return SettingsSearchTarget(
+      label: context.l10n.optionsDefaultSearchTab,
+      child: content,
     );
   }
 }

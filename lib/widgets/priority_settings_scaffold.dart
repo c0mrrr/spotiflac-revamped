@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class PrioritySettingsScaffold extends StatelessWidget {
   final bool hasChanges;
@@ -41,7 +41,7 @@ class PrioritySettingsScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
+    final wideInset = wideListInset(context);
 
     return PopScope(
       canPop: !hasChanges,
@@ -55,13 +55,8 @@ class PrioritySettingsScaffold extends StatelessWidget {
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
+            AppSliverHeader.page(
+              title: title,
               leading: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 icon: const Icon(Icons.arrow_back),
@@ -74,36 +69,12 @@ class PrioritySettingsScaffold extends StatelessWidget {
                     child: Text(saveLabel ?? context.l10n.dialogSave),
                   ),
               ],
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: descriptionPadding,
+                padding: descriptionPadding.add(
+                  EdgeInsets.symmetric(horizontal: wideInset),
+                ),
                 child: Text(
                   description,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -115,7 +86,12 @@ class PrioritySettingsScaffold extends StatelessWidget {
             ...slivers,
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16 + wideInset,
+                  16,
+                  16 + wideInset,
+                  16,
+                ),
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

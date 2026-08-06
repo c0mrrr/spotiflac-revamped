@@ -17,9 +17,9 @@ class PreviewButton extends ConsumerWidget {
       await ref.read(previewPlayerProvider.notifier).toggle(track.previewUrl);
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.previewUnavailable)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.previewUnavailable)));
     }
   }
 
@@ -41,26 +41,22 @@ class PreviewButton extends ConsumerWidget {
     // it (consistent with the mini player) rather than the preview snippet.
     final mainItem = ref.watch(currentMediaItemProvider).value;
     if (_isCurrentMainTrack(mainItem)) {
-      final isPlaying =
-          ref.watch(playbackStateProvider).value?.playing ?? false;
-      return Transform.translate(
-        offset: const Offset(18, 0),
-        child: IconButton(
-          iconSize: size,
-          padding: EdgeInsets.zero,
-          alignment: Alignment.centerRight,
-          visualDensity: VisualDensity.compact,
-          constraints: const BoxConstraints(minWidth: 24, minHeight: 36),
-          icon: Icon(
-            isPlaying
-                ? Icons.pause_circle_filled_rounded
-                : Icons.play_circle_fill_rounded,
-            color: colorScheme.primary,
-          ),
-          tooltip: isPlaying ? context.l10n.previewStop : context.l10n.previewPlay,
-          onPressed: () =>
-              ref.read(musicPlayerControllerProvider).togglePlayPause(isPlaying),
+      final isPlaying = ref.watch(playbackPlayingProvider);
+      return IconButton(
+        iconSize: size,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        icon: Icon(
+          isPlaying
+              ? Icons.pause_circle_filled_rounded
+              : Icons.play_circle_fill_rounded,
+          color: colorScheme.primary,
         ),
+        tooltip: isPlaying
+            ? context.l10n.previewStop
+            : context.l10n.previewPlay,
+        onPressed: () =>
+            ref.read(musicPlayerControllerProvider).togglePlayPause(isPlaying),
       );
     }
 
@@ -92,10 +88,7 @@ class PreviewButton extends ConsumerWidget {
         tooltip = context.l10n.previewStop;
         break;
       case PreviewStatus.paused:
-        icon = Icon(
-          Icons.play_circle_fill_rounded,
-          color: colorScheme.primary,
-        );
+        icon = Icon(Icons.play_circle_fill_rounded, color: colorScheme.primary);
         tooltip = context.l10n.previewPlay;
         break;
       case PreviewStatus.idle:
@@ -107,18 +100,13 @@ class PreviewButton extends ConsumerWidget {
         break;
     }
 
-    return Transform.translate(
-      offset: const Offset(18, 0),
-      child: IconButton(
-        iconSize: size,
-        padding: EdgeInsets.zero,
-        alignment: Alignment.centerRight,
-        visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints(minWidth: 24, minHeight: 36),
-        icon: icon,
-        tooltip: tooltip,
-        onPressed: () => _onPressed(context, ref),
-      ),
+    return IconButton(
+      iconSize: size,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      icon: icon,
+      tooltip: tooltip,
+      onPressed: () => _onPressed(context, ref),
     );
   }
 }

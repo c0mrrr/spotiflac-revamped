@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -10,10 +9,16 @@ import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/l10n/supported_locales.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
+import 'package:spotiflac_android/widgets/scroll_edge_fade.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('SetupScreen');
+
+// Height of the back-button/progress header row above the PageView
+// (16 vertical padding * 2 + 48 button).
+const _headerHeight = 80.0;
 
 class SetupScreen extends ConsumerStatefulWidget {
   const SetupScreen({super.key});
@@ -24,6 +29,7 @@ class SetupScreen extends ConsumerStatefulWidget {
 
 class _SetupScreenState extends ConsumerState<SetupScreen> {
   final PageController _pageController = PageController();
+  final ScrollController _languageScrollController = ScrollController();
   int _currentStep = 0;
 
   String _selectedLocale = 'system';
@@ -46,6 +52,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _languageScrollController.dispose();
     super.dispose();
   }
 
@@ -251,7 +258,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  context.l10n.snackbarCannotOpenFile(e.toString()),
+                  context.l10n.snackbarCannotOpenFile(context.friendlyError(e)),
                 ),
               ),
             );
@@ -313,9 +320,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       context: context,
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -354,19 +358,19 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               title: Text(context.l10n.setupChooseFromFiles),
               onTap: () async {
                 Navigator.pop(ctx);
-                if (Platform.isIOS) {
-                  await Future<void>.delayed(const Duration(milliseconds: 250));
-                }
+                await Future<void>.delayed(const Duration(milliseconds: 250));
 
-                String? result;
+                IosPickedDirectory? picked;
                 try {
-                  result = await FilePicker.getDirectoryPath();
+                  picked = await PlatformBridge.pickIosDirectory();
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          context.l10n.snackbarFolderPickerFailed(e.toString()),
+                          context.l10n.snackbarFolderPickerFailed(
+                            context.friendlyError(e),
+                          ),
                         ),
                         backgroundColor: Theme.of(context).colorScheme.error,
                         duration: const Duration(seconds: 4),
@@ -376,7 +380,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   return;
                 }
 
-                if (result == null) {
+                if (picked == null) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -387,52 +391,29 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   return;
                 }
 
-                // iOS: Validate the selected path is writable
-                if (Platform.isIOS) {
-                  final validation = validateIosPath(result);
-                  if (!validation.isValid) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            validation.errorReason ??
-                                context.l10n.errorInvalidFolderSelected,
-                          ),
-                          backgroundColor: Theme.of(context).colorScheme.error,
-                          duration: const Duration(seconds: 4),
+                // Validate the selected path is writable
+                final validation = validateIosPath(picked.path);
+                if (!validation.isValid) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          validation.errorReason ??
+                              context.l10n.errorInvalidFolderSelected,
                         ),
-                      );
-                    }
-                    return;
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
                   }
-
-                  final bookmark =
-                      await PlatformBridge.createIosBookmarkFromPath(result);
-                  if (bookmark == null || bookmark.isEmpty) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            context.l10n.snackbarFolderPickerFailed(
-                              context.l10n.errorCouldNotKeepFolderAccess,
-                            ),
-                          ),
-                          backgroundColor: Theme.of(context).colorScheme.error,
-                          duration: const Duration(seconds: 4),
-                        ),
-                      );
-                    }
-                    return;
-                  }
-
-                  setState(() {
-                    _selectedDirectory = result;
-                    _selectedDirectoryBookmark = bookmark;
-                  });
                   return;
                 }
 
-                setState(() => _selectedDirectory = result);
+                final pickedDir = picked;
+                setState(() {
+                  _selectedDirectory = pickedDir.path;
+                  _selectedDirectoryBookmark = pickedDir.bookmark;
+                });
               },
             ),
             const SizedBox(height: 16),
@@ -497,7 +478,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.snackbarError(e.toString()))),
+          SnackBar(
+            content: Text(context.l10n.snackbarError(context.friendlyError(e))),
+          ),
         );
       }
     } finally {
@@ -673,47 +656,53 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         final logoSize = (shortestSide * 0.24).clamp(80.0, 104.0);
         final titleGap = (shortestSide * 0.06).clamp(16.0, 32.0);
         final subtitleGap = (shortestSide * 0.04).clamp(8.0, 16.0);
-        final minContentHeight = constraints.maxHeight > 48
-            ? constraints.maxHeight - 48
+        const totalPadding = 48.0 + _headerHeight;
+        final minContentHeight = constraints.maxHeight > totalPadding
+            ? constraints.maxHeight - totalPadding
             : 0.0;
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minContentHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(
-                  'assets/images/logo-transparent.png',
-                  width: logoSize,
-                  height: logoSize,
-                  color: colorScheme.primary,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(height: titleGap),
-                Text(
-                  context.l10n.appName,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                    fontSize:
-                        (Theme.of(context).textTheme.displaySmall?.fontSize ??
-                            36) *
-                        (1 + ((textScale - 1) * 0.18)),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24 + _headerHeight),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: minContentHeight,
+                maxWidth: 560,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/logo-transparent.png',
+                    width: logoSize,
+                    height: logoSize,
+                    color: colorScheme.primary,
+                    fit: BoxFit.contain,
                   ),
-                ),
-                SizedBox(height: subtitleGap),
-                Text(
-                  context.l10n.setupDownloadInFlac,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    height: 1.5,
+                  SizedBox(height: titleGap),
+                  Text(
+                    context.l10n.appName,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                      fontSize:
+                          (Theme.of(context).textTheme.displaySmall?.fontSize ??
+                              36) *
+                          (1 + ((textScale - 1) * 0.18)),
+                    ),
                   ),
-                ),
-              ],
+                  SizedBox(height: subtitleGap),
+                  Text(
+                    context.l10n.setupDownloadInFlac,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -729,17 +718,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     ('es', 'Español', Icons.language),
     ('es_ES', 'Español (España)', Icons.language),
     ('fr', 'Français', Icons.language),
-    ('hi', 'हिन्दी', Icons.language),
     ('ja', '日本語', Icons.language),
     ('ko', '한국어', Icons.language),
-    ('nl', 'Nederlands', Icons.language),
     ('pt', 'Português', Icons.language),
     ('pt_PT', 'Português (Brasil)', Icons.language),
     ('ru', 'Русский', Icons.language),
     ('tr', 'Türkçe', Icons.language),
-    ('zh', '简体中文', Icons.language),
-    ('zh_CN', '简体中文 (中国)', Icons.language),
-    ('zh_TW', '繁體中文', Icons.language),
+    ('uk', 'Українська', Icons.language),
   ];
 
   List<(String, String, IconData)> get _filteredLanguages {
@@ -769,7 +754,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              padding: EdgeInsets.fromLTRB(
+                24 + wideListInset(context, contentMaxWidth: 560),
+                24,
+                24 + wideListInset(context, contentMaxWidth: 560),
+                0,
+              ),
               child: Column(
                 children: [
                   Container(
@@ -807,72 +797,91 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 80),
-                itemCount: languages.length,
-                itemBuilder: (context, index) {
-                  final lang = languages[index];
-                  final code = lang.$1;
-                  final name = lang.$2;
-                  final isSelected = _selectedLocale == code;
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Material(
-                      color: isSelected
-                          ? colorScheme.primaryContainer
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _onLanguageSelected(code),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                lang.$3,
-                                color: isSelected
-                                    ? colorScheme.onPrimaryContainer
-                                    : colorScheme.onSurfaceVariant,
-                                size: 22,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Text(
-                                  code == 'system'
-                                      ? context.l10n.setupLanguageSystemDefault
-                                      : name,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                    color: isSelected
-                                        ? colorScheme.onPrimaryContainer
-                                        : colorScheme.onSurface,
-                                  ),
-                                ),
-                              ),
-                              if (isSelected)
-                                Icon(
-                                  Icons.check_circle,
-                                  color: colorScheme.onPrimaryContainer,
-                                  size: 22,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              child: ScrollEdgeFade(
+                child: Scrollbar(
+                  controller: _languageScrollController,
+                  thumbVisibility: true,
+                  child: _buildLanguageList(languages, colorScheme),
+                ),
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLanguageList(
+    List<(String, String, IconData)> languages,
+    ColorScheme colorScheme,
+  ) {
+    return ListView.builder(
+      controller: _languageScrollController,
+      padding: EdgeInsets.fromLTRB(
+        24 + wideListInset(context, contentMaxWidth: 560),
+        0,
+        24 + wideListInset(context, contentMaxWidth: 560),
+        80,
+      ),
+      itemCount: languages.length,
+      itemBuilder: (context, index) {
+        final lang = languages[index];
+        final code = lang.$1;
+        final name = lang.$2;
+        final isSelected = _selectedLocale == code;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Material(
+            color: isSelected
+                ? colorScheme.primaryContainer
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _onLanguageSelected(code),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      lang.$3,
+                      color: isSelected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        code == 'system'
+                            ? context.l10n.setupLanguageSystemDefault
+                            : name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      Icon(
+                        Icons.check_circle,
+                        color: colorScheme.onPrimaryContainer,
+                        size: 22,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         );
       },
     );
@@ -1004,46 +1013,58 @@ class _StepLayout extends StatelessWidget {
         final titleGap = (shortestSide * 0.06).clamp(16.0, 32.0);
         final descriptionGap = (shortestSide * 0.04).clamp(8.0, 16.0);
         final actionGap = (shortestSide * 0.09).clamp(20.0, 48.0);
-        final minContentHeight = constraints.maxHeight > 48
-            ? constraints.maxHeight - 48
+        // Extra bottom padding offsets the 80dp header above the PageView so
+        // the content sits at the optical center of the full screen.
+        const totalPadding = 48.0 + _headerHeight;
+        final minContentHeight = constraints.maxHeight > totalPadding
+            ? constraints.maxHeight - totalPadding
             : 0.0;
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minContentHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(iconPadding),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    shape: BoxShape.circle,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24 + _headerHeight),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: minContentHeight,
+                maxWidth: 560,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(iconPadding),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: iconSize,
+                      color: colorScheme.primary,
+                    ),
                   ),
-                  child: Icon(icon, size: iconSize, color: colorScheme.primary),
-                ),
-                SizedBox(height: titleGap),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
+                  SizedBox(height: titleGap),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: descriptionGap),
-                Text(
-                  description,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    height: 1.5,
+                  SizedBox(height: descriptionGap),
+                  Text(
+                    description,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: actionGap),
-                child,
-              ],
+                  SizedBox(height: actionGap),
+                  child,
+                ],
+              ),
             ),
           ),
         );

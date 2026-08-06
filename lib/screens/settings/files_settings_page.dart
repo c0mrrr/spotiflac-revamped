@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
+import 'package:spotiflac_android/widgets/app_bottom_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -10,9 +9,9 @@ import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/settings.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class FilesSettingsPage extends ConsumerStatefulWidget {
   const FilesSettingsPage({super.key});
@@ -25,11 +24,40 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
   int _androidSdkVersion = 0;
   bool _hasAllFilesAccess = false;
   bool _artistFolderFiltersExpanded = false;
+  bool _safAccessLost = false;
 
   @override
   void initState() {
     super.initState();
     _initDeviceInfo();
+    _checkSafAccess();
+  }
+
+  Future<void> _checkSafAccess() async {
+    if (!Platform.isAndroid) return;
+    final settings = ref.read(settingsProvider);
+    if (settings.storageMode != 'saf' || settings.downloadTreeUri.isEmpty) {
+      if (mounted && _safAccessLost) setState(() => _safAccessLost = false);
+      return;
+    }
+    final accessible = await PlatformBridge.isSafTreeAccessible(
+      settings.downloadTreeUri,
+    );
+    if (mounted) setState(() => _safAccessLost = !accessible);
+  }
+
+  Future<void> _pickSafTreeAndSave() async {
+    final result = await PlatformBridge.pickSafTree();
+    if (result == null) return;
+    final treeUri = result['tree_uri'] as String? ?? '';
+    final displayName = result['display_name'] as String? ?? '';
+    if (treeUri.isEmpty) return;
+    final notifier = ref.read(settingsProvider.notifier);
+    notifier.setStorageMode('saf');
+    notifier.setDownloadTreeUri(
+      treeUri,
+      displayName: displayName.isNotEmpty ? displayName : treeUri,
+    );
   }
 
   Future<void> _initDeviceInfo() async {
@@ -89,52 +117,13 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
 
     return PopScope(
       canPop: true,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      context.l10n.settingsFiles,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
-            ),
+            AppSliverHeader.page(title: context.l10n.settingsFiles),
 
             SliverToBoxAdapter(
               child: SettingsSectionHeader(
@@ -158,6 +147,26 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
                 ],
               ),
             ),
+            if (Platform.isAndroid &&
+                _safAccessLost &&
+                settings.storageMode == 'saf' &&
+                settings.downloadTreeUri.isNotEmpty)
+              SliverToBoxAdapter(
+                child: SettingsInfoCard(
+                  icon: Icons.warning_amber_outlined,
+                  tone: SettingsInfoTone.error,
+                  title: context.l10n.downloadFolderAccessLostTitle,
+                  message: context.l10n.downloadFolderAccessLostSubtitle,
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  action: FilledButton.tonal(
+                    onPressed: () async {
+                      await _pickSafTreeAndSave();
+                      await _checkSafAccess();
+                    },
+                    child: Text(context.l10n.downloadFolderReselect),
+                  ),
+                ),
+              ),
 
             SliverToBoxAdapter(
               child: SettingsSectionHeader(
@@ -477,9 +486,6 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
       context: context,
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -524,22 +530,8 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
               trailing: isSafMode ? const Icon(Icons.check) : null,
               onTap: () async {
                 Navigator.pop(ctx);
-                final result = await PlatformBridge.pickSafTree();
-                if (result != null) {
-                  final treeUri = result['tree_uri'] as String? ?? '';
-                  final displayName = result['display_name'] as String? ?? '';
-                  if (treeUri.isNotEmpty) {
-                    ref.read(settingsProvider.notifier).setStorageMode('saf');
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setDownloadTreeUri(
-                          treeUri,
-                          displayName: displayName.isNotEmpty
-                              ? displayName
-                              : treeUri,
-                        );
-                  }
-                }
+                await _pickSafTreeAndSave();
+                await _checkSafAccess();
               },
             ),
             const SizedBox(height: 8),
@@ -555,9 +547,6 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
       context: context,
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -600,18 +589,18 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
               subtitle: Text(context.l10n.setupChooseFromFilesSubtitle),
               onTap: () async {
                 Navigator.pop(ctx);
-                if (Platform.isIOS) {
-                  await Future<void>.delayed(const Duration(milliseconds: 250));
-                }
-                String? result;
+                await Future<void>.delayed(const Duration(milliseconds: 250));
+                IosPickedDirectory? picked;
                 try {
-                  result = await FilePicker.getDirectoryPath();
+                  picked = await PlatformBridge.pickIosDirectory();
                 } catch (e) {
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(
                         content: Text(
-                          ctx.l10n.snackbarFolderPickerFailed(e.toString()),
+                          ctx.l10n.snackbarFolderPickerFailed(
+                            ctx.friendlyError(e),
+                          ),
                         ),
                         backgroundColor: Theme.of(ctx).colorScheme.error,
                         duration: const Duration(seconds: 4),
@@ -620,82 +609,38 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
                   }
                   return;
                 }
-                if (result != null) {
-                  if (Platform.isIOS) {
-                    final validation = validateIosPath(result);
-                    if (!validation.isValid) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              validation.errorReason ??
-                                  context.l10n.setupIcloudNotSupported,
-                            ),
-                            backgroundColor: Theme.of(ctx).colorScheme.error,
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      }
-                      return;
-                    }
+                if (picked == null) return;
 
-                    final bookmark =
-                        await PlatformBridge.createIosBookmarkFromPath(result);
-                    if (bookmark == null || bookmark.isEmpty) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              ctx.l10n.snackbarFolderPickerFailed(
-                                ctx.l10n.errorCouldNotKeepFolderAccess,
-                              ),
-                            ),
-                            backgroundColor: Theme.of(ctx).colorScheme.error,
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      }
-                      return;
-                    }
-
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setDownloadDirectory(result, iosBookmark: bookmark);
-                    return;
+                final validation = validateIosPath(picked.path);
+                if (!validation.isValid) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          validation.errorReason ??
+                              context.l10n.setupIcloudNotSupported,
+                        ),
+                        backgroundColor: Theme.of(ctx).colorScheme.error,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
                   }
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setDownloadDirectory(result);
+                  return;
                 }
+
+                ref
+                    .read(settingsProvider.notifier)
+                    .setDownloadDirectory(
+                      picked.path,
+                      iosBookmark: picked.bookmark,
+                    );
               },
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 20,
-                      color: colorScheme.tertiary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        context.l10n.setupIosEmptyFolderWarning,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onTertiaryContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            SettingsInfoCard(
+              icon: Icons.info_outline,
+              tone: SettingsInfoTone.warning,
+              message: context.l10n.setupIosEmptyFolderWarning,
+              margin: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             ),
             const SizedBox(height: 8),
           ],
@@ -721,9 +666,6 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (context) => _FilenameFormatEditorSheet(
         initialText: current,
         onSave: save,
@@ -744,9 +686,6 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.7,
       ),
@@ -816,8 +755,9 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
                   leading: Icon(option.$4),
                   title: Text(option.$2),
                   subtitle: Text(option.$3),
-                  trailing:
-                      current == option.$1 ? const Icon(Icons.check) : null,
+                  trailing: current == option.$1
+                      ? const Icon(Icons.check)
+                      : null,
                   onTap: () {
                     ref
                         .read(settingsProvider.notifier)
@@ -843,9 +783,6 @@ class _FilesSettingsPageState extends ConsumerState<FilesSettingsPage> {
       useRootNavigator: true,
       backgroundColor: colorScheme.surfaceContainerHigh,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.7,
       ),
@@ -968,7 +905,6 @@ class _FolderOption extends StatelessWidget {
   }
 }
 
-
 /// Bottom sheet for editing a filename format. Owns its controller and disposes
 /// it in [dispose] to avoid use-after-dispose during the close animation.
 class _FilenameFormatEditorSheet extends StatefulWidget {
@@ -1082,22 +1018,12 @@ class _FilenameFormatEditorSheetState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
-                  child: Container(
-                    width: 32,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+                const AppSheetHandle(),
                 Text(
                   widget.title ?? context.l10n.filenameFormat,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),

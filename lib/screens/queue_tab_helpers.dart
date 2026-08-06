@@ -1,188 +1,5 @@
 part of 'queue_tab.dart';
 
-enum LibraryItemSource { downloaded, local }
-
-class UnifiedLibraryItem {
-  final String id;
-  final String trackName;
-  final String artistName;
-  final String albumName;
-  final String? coverUrl;
-  final String? localCoverPath;
-  final String filePath;
-  final String? quality;
-  final DateTime addedAt;
-  final LibraryItemSource source;
-
-  final DownloadHistoryItem? historyItem;
-  final LocalLibraryItem? localItem;
-
-  UnifiedLibraryItem({
-    required this.id,
-    required this.trackName,
-    required this.artistName,
-    required this.albumName,
-    this.coverUrl,
-    this.localCoverPath,
-    required this.filePath,
-    this.quality,
-    required this.addedAt,
-    required this.source,
-    this.historyItem,
-    this.localItem,
-  });
-
-  factory UnifiedLibraryItem.fromDownloadHistory(DownloadHistoryItem item) {
-    String? quality;
-    if (item.bitrate != null && item.bitrate! > 0) {
-      quality = buildDisplayAudioQuality(
-        bitrateKbps: item.bitrate,
-        format: item.format,
-      );
-    } else if (item.bitDepth != null &&
-        item.bitDepth! > 0 &&
-        item.sampleRate != null) {
-      quality = buildDisplayAudioQuality(
-        bitDepth: item.bitDepth,
-        sampleRate: item.sampleRate,
-      );
-    }
-    quality ??= item.quality;
-    return UnifiedLibraryItem(
-      id: 'dl_${item.id}',
-      trackName: item.trackName,
-      artistName: item.artistName,
-      albumName: item.albumName,
-      coverUrl: item.coverUrl,
-      filePath: item.filePath,
-      quality: quality,
-      addedAt: item.downloadedAt,
-      source: LibraryItemSource.downloaded,
-      historyItem: item,
-    );
-  }
-
-  factory UnifiedLibraryItem.fromLocalLibrary(LocalLibraryItem item) {
-    String? quality;
-    if (item.bitrate != null && item.bitrate! > 0) {
-      quality = buildDisplayAudioQuality(
-        bitrateKbps: item.bitrate,
-        format: item.format,
-      );
-    } else if (item.bitDepth != null &&
-        item.bitDepth! > 0 &&
-        item.sampleRate != null) {
-      quality = buildDisplayAudioQuality(
-        bitDepth: item.bitDepth,
-        sampleRate: item.sampleRate,
-      );
-    }
-    return UnifiedLibraryItem(
-      id: 'local_${item.id}',
-      trackName: item.trackName,
-      artistName: item.artistName,
-      albumName: item.albumName,
-      coverUrl: null,
-      localCoverPath: item.coverPath,
-      filePath: item.filePath,
-      quality: quality,
-      addedAt: item.fileModTime != null
-          ? DateTime.fromMillisecondsSinceEpoch(item.fileModTime!)
-          : item.scannedAt,
-      source: LibraryItemSource.local,
-      localItem: item,
-    );
-  }
-
-  bool get hasCover =>
-      coverUrl != null ||
-      (localCoverPath != null && localCoverPath!.isNotEmpty);
-
-  String? get albumArtist => historyItem?.albumArtist ?? localItem?.albumArtist;
-
-  String? get releaseDate => historyItem?.releaseDate ?? localItem?.releaseDate;
-
-  String? get genre => historyItem?.genre ?? localItem?.genre;
-
-  int? get trackNumber => historyItem?.trackNumber ?? localItem?.trackNumber;
-
-  int? get discNumber => historyItem?.discNumber ?? localItem?.discNumber;
-
-  String? get isrc => historyItem?.isrc ?? localItem?.isrc;
-
-  String? get label => historyItem?.label ?? localItem?.label;
-
-  String get searchKey =>
-      '${trackName.toLowerCase()}|${artistName.toLowerCase()}|${albumName.toLowerCase()}';
-  String get albumKey =>
-      '${albumName.toLowerCase()}|${artistName.toLowerCase()}';
-
-  /// Returns the collection key used to match this item against playlist
-  /// entries. Uses the same logic as [trackCollectionKey] from the collections
-  /// provider: prefer ISRC, fall back to source:id.
-  String get collectionKey {
-    if (historyItem != null) {
-      final isrc = historyItem!.isrc?.trim();
-      if (isrc != null && isrc.isNotEmpty) return 'isrc:${isrc.toUpperCase()}';
-      final source = historyItem!.service.trim().isNotEmpty
-          ? historyItem!.service.trim()
-          : 'builtin';
-      return '$source:${historyItem!.id}';
-    }
-    if (localItem != null) {
-      final isrc = localItem!.isrc?.trim();
-      if (isrc != null && isrc.isNotEmpty) return 'isrc:${isrc.toUpperCase()}';
-      return 'local:${localItem!.id}';
-    }
-    return 'builtin:$id';
-  }
-
-  Track toTrack() {
-    if (historyItem != null) {
-      final h = historyItem!;
-      return Track(
-        id: h.id,
-        name: h.trackName,
-        artistName: h.artistName,
-        albumName: h.albumName,
-        albumArtist: h.albumArtist,
-        coverUrl: h.coverUrl,
-        isrc: h.isrc,
-        duration: h.duration ?? 0,
-        trackNumber: h.trackNumber,
-        discNumber: h.discNumber,
-        releaseDate: h.releaseDate,
-        source: h.service,
-      );
-    }
-    if (localItem != null) {
-      final l = localItem!;
-      return Track(
-        id: l.id,
-        name: l.trackName,
-        artistName: l.artistName,
-        albumName: l.albumName,
-        albumArtist: l.albumArtist,
-        coverUrl: l.coverPath,
-        isrc: l.isrc,
-        duration: l.duration ?? 0,
-        trackNumber: l.trackNumber,
-        discNumber: l.discNumber,
-        releaseDate: l.releaseDate,
-        source: 'local',
-      );
-    }
-    return Track(
-      id: id,
-      name: trackName,
-      artistName: artistName,
-      albumName: albumName,
-      coverUrl: coverUrl,
-      duration: 0,
-    );
-  }
-}
-
 class _GroupedAlbum {
   final String albumName;
   final String artistName;
@@ -231,20 +48,6 @@ class _GroupedLocalAlbum {
   String get key => albumKey;
 
   int get displayTrackCount => trackCount ?? tracks.length;
-}
-
-class _HistoryStats {
-  final Map<String, int> albumCounts;
-  final List<_GroupedAlbum> groupedAlbums;
-  final int albumCount;
-  final int singleTracks;
-
-  const _HistoryStats({
-    required this.albumCounts,
-    required this.groupedAlbums,
-    required this.albumCount,
-    required this.singleTracks,
-  });
 }
 
 class _FilterContentData {
@@ -313,6 +116,18 @@ class _QueueLibraryPageRequest {
     includeLocal: localLibraryEnabled,
   );
 
+  bool get allowsInMemoryHistoryFallback =>
+      offset == 0 &&
+      searchQuery.trim().isEmpty &&
+      filterSource != 'local' &&
+      filterQuality == null &&
+      filterFormat == null &&
+      filterMetadata == null &&
+      sortMode == 'latest' &&
+      (filterMode == 'all' ||
+          filterMode == 'albums' ||
+          filterMode == 'singles');
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -369,6 +184,13 @@ class _QueueLibraryCountsRequest {
     includeLocal: localLibraryEnabled,
   );
 
+  bool get allowsInMemoryHistoryFallback =>
+      searchQuery.trim().isEmpty &&
+      filterSource != 'local' &&
+      filterQuality == null &&
+      filterFormat == null &&
+      filterMetadata == null;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -405,6 +227,85 @@ class _QueueLibraryPageData {
     this.groupedAlbums = const [],
     this.groupedLocalAlbums = const [],
   });
+
+  bool get isEmpty =>
+      items.isEmpty &&
+      historyItems.isEmpty &&
+      localItems.isEmpty &&
+      groupedAlbums.isEmpty &&
+      groupedLocalAlbums.isEmpty;
+
+  factory _QueueLibraryPageData.fromHistorySnapshot(
+    List<DownloadHistoryItem> historyItems, {
+    required String filterMode,
+    required int limit,
+  }) {
+    final albumTracks = <String, List<DownloadHistoryItem>>{};
+    for (final item in historyItems) {
+      final albumKey = LibraryDatabase.albumKeyFor(
+        item.albumName,
+        item.albumArtist,
+        item.artistName,
+      );
+      albumTracks.putIfAbsent(albumKey, () => []).add(item);
+    }
+
+    if (filterMode == 'albums') {
+      final albums = <_GroupedAlbum>[];
+      for (final tracks in albumTracks.values) {
+        if (tracks.length <= 1) continue;
+        final latest = tracks
+            .map((item) => item.downloadedAt)
+            .reduce((a, b) => a.isAfter(b) ? a : b);
+        final sample = tracks.first;
+        String? coverUrl;
+        for (final track in tracks) {
+          final candidate = track.coverUrl?.trim();
+          if (candidate != null && candidate.isNotEmpty) {
+            coverUrl = candidate;
+            break;
+          }
+        }
+        albums.add(
+          _GroupedAlbum(
+            albumName: sample.albumName,
+            artistName: sample.albumArtist?.trim().isNotEmpty == true
+                ? sample.albumArtist!
+                : sample.artistName,
+            coverUrl: coverUrl,
+            sampleFilePath: sample.filePath,
+            tracks: List.unmodifiable(tracks),
+            trackCount: tracks.length,
+            latestDownload: latest,
+          ),
+        );
+      }
+      albums.sort((a, b) => b.latestDownload.compareTo(a.latestDownload));
+      return _QueueLibraryPageData(
+        groupedAlbums: albums.take(limit).toList(growable: false),
+      );
+    }
+
+    final selectedHistory =
+        (filterMode == 'singles'
+                ? historyItems.where((item) {
+                    final albumKey = LibraryDatabase.albumKeyFor(
+                      item.albumName,
+                      item.albumArtist,
+                      item.artistName,
+                    );
+                    return albumTracks[albumKey]?.length == 1;
+                  })
+                : historyItems)
+            .take(limit)
+            .toList(growable: false);
+    return _QueueLibraryPageData(
+      items: selectedHistory
+          .map(UnifiedLibraryItem.fromDownloadHistory)
+          .toList(growable: false),
+      historyItems: selectedHistory,
+    );
+  }
 
   factory _QueueLibraryPageData.combine(List<_QueueLibraryPageData> pages) {
     if (pages.isEmpty) return const _QueueLibraryPageData();
@@ -459,8 +360,34 @@ class _QueueLibraryPageData {
   }
 }
 
-final _queueLibraryPageProvider =
-    FutureProvider.family<_QueueLibraryPageData, _QueueLibraryPageRequest>((
+QueueLibraryCounts _historySnapshotCounts(
+  List<DownloadHistoryItem> items, {
+  required int persistedTotalCount,
+}) {
+  final albumCounts = <String, int>{};
+  for (final item in items) {
+    final key = LibraryDatabase.albumKeyFor(
+      item.albumName,
+      item.albumArtist,
+      item.artistName,
+    );
+    albumCounts[key] = (albumCounts[key] ?? 0) + 1;
+  }
+  final albumCount = albumCounts.values.where((count) => count > 1).length;
+  final singleTrackCount = albumCounts.values
+      .where((count) => count == 1)
+      .length;
+  return QueueLibraryCounts(
+    allTrackCount: persistedTotalCount > items.length
+        ? persistedTotalCount
+        : items.length,
+    albumCount: albumCount,
+    singleTrackCount: singleTrackCount,
+  );
+}
+
+final _queueLibraryPageProvider = FutureProvider.autoDispose
+    .family<_QueueLibraryPageData, _QueueLibraryPageRequest>((
       ref,
       request,
     ) async {
@@ -470,6 +397,10 @@ final _queueLibraryPageProvider =
       ref.watch(
         localLibraryProvider.select((state) => state.loadedIndexVersion),
       );
+      // Playlists render from libraryCollectionsProvider, not the DB.
+      if (request.filterMode == 'playlists') {
+        return const _QueueLibraryPageData();
+      }
       final dbQuery = request.toDbQuery();
       if (request.filterMode == 'albums') {
         final rows = await LibraryDatabase.instance.getQueueAlbumPage(dbQuery);
@@ -535,8 +466,8 @@ final _queueLibraryPageProvider =
       );
     });
 
-final _queueLibraryCountsProvider =
-    FutureProvider.family<QueueLibraryCounts, _QueueLibraryCountsRequest>((
+final _queueLibraryCountsProvider = FutureProvider.autoDispose
+    .family<QueueLibraryCounts, _QueueLibraryCountsRequest>((
       ref,
       request,
     ) async {
@@ -548,22 +479,6 @@ final _queueLibraryCountsProvider =
       );
       return LibraryDatabase.instance.getQueueCounts(request.toDbQuery());
     });
-
-class _UnifiedCacheEntry {
-  final List<DownloadHistoryItem> historyItems;
-  final List<LocalLibraryItem> localItems;
-  final Map<String, int> localAlbumCounts;
-  final String query;
-  final List<UnifiedLibraryItem> items;
-
-  const _UnifiedCacheEntry({
-    required this.historyItems,
-    required this.localItems,
-    required this.localAlbumCounts,
-    required this.query,
-    required this.items,
-  });
-}
 
 class _QueueItemIdsSnapshot {
   final List<String> ids;
@@ -671,193 +586,4 @@ class _FileExistsListenableCache {
     _missCounts.clear();
     _alwaysMissingNotifier.dispose();
   }
-}
-
-bool _queueHasMetadataValue(String? value) {
-  return value != null && value.trim().isNotEmpty;
-}
-
-String _queueNormalizedMetadataValue(String? value) {
-  return value?.trim().toLowerCase() ?? '';
-}
-
-DateTime? _queueParseReleaseDate(String? value) {
-  final trimmed = value?.trim() ?? '';
-  if (trimmed.isEmpty) {
-    return null;
-  }
-
-  final parsed = DateTime.tryParse(trimmed);
-  if (parsed != null) {
-    return parsed;
-  }
-
-  final yearMatch = RegExp(r'(\d{4})').firstMatch(trimmed);
-  if (yearMatch == null) {
-    return null;
-  }
-
-  final year = int.tryParse(yearMatch.group(1)!);
-  if (year == null || year <= 0) {
-    return null;
-  }
-  return DateTime(year);
-}
-
-bool _queueMatchesMetadataFilter({
-  required String? filterMetadata,
-  required String? artistName,
-  required String? albumArtist,
-  required String? releaseDate,
-  required String? genre,
-  required int? trackNumber,
-  required int? discNumber,
-  required String? isrc,
-  required String? label,
-}) {
-  if (filterMetadata == null) {
-    return true;
-  }
-
-  final hasArtist = _queueHasMetadataValue(artistName);
-  final hasAlbumArtist = _queueHasMetadataValue(albumArtist);
-  final hasReleaseDate = _queueParseReleaseDate(releaseDate) != null;
-  final hasGenre = _queueHasMetadataValue(genre);
-  final hasTrackNumber = trackNumber != null && trackNumber > 0;
-  final hasDiscNumber = discNumber != null && discNumber > 0;
-  final hasLabel = _queueHasMetadataValue(label);
-  final hasIncorrectIsrc = _queueHasIncorrectIsrcFormat(isrc);
-  final isComplete =
-      hasArtist &&
-      hasAlbumArtist &&
-      hasReleaseDate &&
-      hasGenre &&
-      hasTrackNumber &&
-      hasDiscNumber &&
-      hasLabel &&
-      !hasIncorrectIsrc;
-
-  switch (filterMetadata) {
-    case 'complete':
-      return isComplete;
-    case 'missing-any':
-      return !isComplete;
-    case 'missing-year':
-      return !hasReleaseDate;
-    case 'missing-genre':
-      return !hasGenre;
-    case 'missing-album-artist':
-      return !hasAlbumArtist;
-    case 'missing-track-number':
-      return !hasTrackNumber;
-    case 'missing-disc-number':
-      return !hasDiscNumber;
-    case 'missing-artist':
-      return !hasArtist;
-    case 'incorrect-isrc-format':
-      return hasIncorrectIsrc;
-    case 'missing-label':
-      return !hasLabel;
-    default:
-      return true;
-  }
-}
-
-bool _queueHasIncorrectIsrcFormat(String? isrc) {
-  final raw = isrc?.trim() ?? '';
-  if (raw.isEmpty) return false;
-  final normalized = raw.toUpperCase().replaceAll(RegExp(r'[-\s]'), '');
-  return !RegExp(r'^[A-Z]{2}[A-Z0-9]{3}\d{7}$').hasMatch(normalized);
-}
-
-bool _queueUnifiedItemMatchesMetadataFilter(
-  UnifiedLibraryItem item,
-  String? filterMetadata,
-) {
-  return _queueMatchesMetadataFilter(
-    filterMetadata: filterMetadata,
-    artistName: item.artistName,
-    albumArtist: item.albumArtist,
-    releaseDate: item.releaseDate,
-    genre: item.genre,
-    trackNumber: item.trackNumber,
-    discNumber: item.discNumber,
-    isrc: item.isrc,
-    label: item.label,
-  );
-}
-
-int _queueCompareOptionalText(
-  String? left,
-  String? right, {
-  bool descending = false,
-}) {
-  final normalizedLeft = _queueNormalizedMetadataValue(left);
-  final normalizedRight = _queueNormalizedMetadataValue(right);
-  final leftEmpty = normalizedLeft.isEmpty;
-  final rightEmpty = normalizedRight.isEmpty;
-
-  if (leftEmpty && rightEmpty) {
-    return 0;
-  }
-  if (leftEmpty) {
-    return 1;
-  }
-  if (rightEmpty) {
-    return -1;
-  }
-
-  final comparison = normalizedLeft.compareTo(normalizedRight);
-  return descending ? -comparison : comparison;
-}
-
-int _queueCompareOptionalDate(
-  DateTime? left,
-  DateTime? right, {
-  bool descending = false,
-}) {
-  if (left == null && right == null) {
-    return 0;
-  }
-  if (left == null) {
-    return 1;
-  }
-  if (right == null) {
-    return -1;
-  }
-
-  final comparison = left.compareTo(right);
-  return descending ? -comparison : comparison;
-}
-
-Map<String, List<String>> _filterHistoryInIsolate(Map<String, Object> payload) {
-  final entries = (payload['entries'] as List).cast<List<Object?>>();
-  final albumCounts = Map<String, int>.from(payload['albumCounts'] as Map);
-  final query = (payload['query'] as String?) ?? '';
-  final hasQuery = query.isNotEmpty;
-
-  final allIds = <String>[];
-  final albumIds = <String>[];
-  final singleIds = <String>[];
-
-  for (final entry in entries) {
-    final id = entry[0] as String;
-    final albumKey = entry[1] as String;
-    if (hasQuery) {
-      final searchKey = entry[2] as String;
-      if (!searchKey.contains(query)) {
-        continue;
-      }
-    }
-
-    allIds.add(id);
-    final count = albumCounts[albumKey] ?? 0;
-    if (count > 1) {
-      albumIds.add(id);
-    } else if (count == 1) {
-      singleIds.add(id);
-    }
-  }
-
-  return {'all': allIds, 'albums': albumIds, 'singles': singleIds};
 }

@@ -27,6 +27,9 @@ const List<String> losslessDitherOptions = [
 
 const List<String> losslessResamplerOptions = ['swr', 'soxr'];
 
+const int soxrVhqPrecisionBits = 28;
+const double soxrPassbandEndRatio = 0.95;
+
 class LosslessConversionProcessing {
   final String dither;
   final String resampler;
@@ -47,6 +50,19 @@ class LosslessConversionProcessing {
   }
 
   bool get hasDither => normalizedDither != 'none';
+}
+
+List<String> losslessResamplerFilterOptions(
+  LosslessConversionProcessing processing,
+) {
+  final resampler = processing.normalizedResampler;
+  return [
+    'resampler=$resampler',
+    if (resampler == 'soxr') ...[
+      'precision=$soxrVhqPrecisionBits',
+      'cutoff=$soxrPassbandEndRatio',
+    ],
+  ];
 }
 
 List<int> availableLosslessBitDepthOptions(int? sourceBitDepth) {
@@ -128,8 +144,13 @@ bool canConvertAudioFormat({
   required String sourceFormat,
   required String targetFormat,
 }) {
-  if (sourceFormat.trim().toUpperCase() == targetFormat.trim().toUpperCase()) {
-    return false;
+  final normalizedSource = sourceFormat.trim().toUpperCase();
+  final normalizedTarget = targetFormat.trim().toUpperCase();
+  if (normalizedSource == normalizedTarget) {
+    // Same-format lossless re-encoding is useful for reducing bit depth or
+    // sample rate while selecting the dither and resampler implementation.
+    return isLosslessConversionSource(normalizedSource) &&
+        isLosslessConversionTarget(normalizedTarget);
   }
   if (isLosslessConversionTarget(targetFormat) &&
       !isLosslessConversionSource(sourceFormat)) {
@@ -301,15 +322,6 @@ String convertedAudioQualityLabel({
   return '$upper ${bitrate.trim().toLowerCase()}';
 }
 
-int? readPositiveAudioInt(Object? value) {
-  if (value is num) {
-    final intValue = value.toInt();
-    return intValue > 0 ? intValue : null;
-  }
-  final parsed = int.tryParse(value?.toString() ?? '');
-  return parsed != null && parsed > 0 ? parsed : null;
-}
-
 String normalizedConvertedAudioFormat(String targetFormat) {
   return targetFormat.trim().toLowerCase();
 }
@@ -334,6 +346,25 @@ String normalizedConvertedAudioFormat(String targetFormat) {
     default:
       return (ext: '.mp3', mime: 'audio/mpeg');
   }
+}
+
+String convertedOutputFileName({
+  required String originalFileName,
+  required String targetFormat,
+}) {
+  final dotIndex = originalFileName.lastIndexOf('.');
+  final baseName = dotIndex > 0
+      ? originalFileName.substring(0, dotIndex)
+      : originalFileName;
+  return '$baseName${convertTargetExtAndMime(targetFormat).ext}';
+}
+
+String convertedLibraryItemId(String sourceId, String filePath) {
+  var hash = 5381;
+  for (final codeUnit in filePath.codeUnits) {
+    hash = (((hash << 5) + hash) ^ codeUnit) & 0x7fffffff;
+  }
+  return '$sourceId:converted:${hash.toRadixString(16)}';
 }
 
 int? convertedAudioBitrateKbps({

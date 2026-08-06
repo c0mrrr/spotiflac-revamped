@@ -19,6 +19,74 @@ const _spotifyClientSecretKey = 'spotify_client_secret';
 const _retiredBuiltInProviderIds = {'deezer', 'qobuz', 'tidal', 'youtube'};
 final _log = AppLogger('SettingsProvider');
 
+/// Startup override used to render the correct route/locale on the first
+/// frame. The notifier still performs migrations and full validation after it
+/// mounts.
+final initialSettingsProvider = Provider<AppSettings>(
+  (ref) => const AppSettings(),
+);
+
+/// Set during bootstrap when the saved Android SAF tree no longer has a valid
+/// persisted grant. MainShell consumes this once to block downloads until the
+/// user explicitly repairs or changes the destination.
+final initialSafAccessLostProvider = Provider<bool>((ref) => false);
+
+bool hasPersistedAppSettings(SharedPreferences prefs) {
+  final rawSettings = prefs.getString(_settingsKey);
+  return rawSettings != null && rawSettings.isNotEmpty;
+}
+
+AppSettings loadBootstrapSettings(SharedPreferences prefs) {
+  final rawSettings = prefs.getString(_settingsKey);
+  if (rawSettings == null || rawSettings.isEmpty) return const AppSettings();
+  try {
+    final decoded = jsonDecode(rawSettings);
+    if (decoded is! Map) return const AppSettings();
+    return AppSettings.fromJson(Map<String, dynamic>.from(decoded));
+  } catch (_) {
+    return const AppSettings();
+  }
+}
+
+/// Removes values that are only valid for one OS installation while keeping
+/// portable user preferences. This is used when Android restores app data into
+/// a fresh package install despite backup being disabled (for example an OEM
+/// device-to-device transfer).
+AppSettings resetInstallationBoundSettings(AppSettings settings) {
+  return settings.copyWith(
+    downloadDirectory: '',
+    downloadDirectoryBookmark: '',
+    storageMode: 'app',
+    downloadTreeUri: '',
+    isFirstLaunch: true,
+    useAllFilesAccess: false,
+    localLibraryEnabled: false,
+    localLibraryPath: '',
+    localLibraryBookmark: '',
+    localLibraryAutoScan: 'off',
+    hasCompletedTutorial: false,
+  );
+}
+
+Future<void> resetRestoredInstallationSettings(SharedPreferences prefs) async {
+  final rawSettings = prefs.getString(_settingsKey);
+  if (rawSettings == null || rawSettings.isEmpty) return;
+
+  try {
+    final decoded = jsonDecode(rawSettings);
+    if (decoded is! Map) {
+      await prefs.remove(_settingsKey);
+      return;
+    }
+    final restored = AppSettings.fromJson(Map<String, dynamic>.from(decoded));
+    final sanitized = resetInstallationBoundSettings(restored);
+    await prefs.setString(_settingsKey, jsonEncode(sanitized.toJson()));
+  } catch (e) {
+    _log.w('Failed to sanitize restored settings; resetting to defaults: $e');
+    await prefs.remove(_settingsKey);
+  }
+}
+
 class SettingsNotifier extends Notifier<AppSettings> {
   static final RegExp _isoRegionPattern = RegExp(r'^[A-Z]{2}$');
   static const Set<String> _searchTabValues = {
@@ -27,6 +95,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     'artist',
     'album',
     'playlist',
+  };
+  static const Set<String> _libraryViewValues = {
+    'last',
+    'all',
+    'albums',
+    'singles',
+    'playlists',
   };
   static const Set<String> _extensionVerificationBrowserModeValues = {
     'external_first',
@@ -41,8 +116,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   @override
   AppSettings build() {
-    _loadSettings();
-    return const AppSettings();
+    unawaited(_loadSettings());
+    return ref.read(initialSettingsProvider);
   }
 
   Future<void> _loadSettings() async {
@@ -81,6 +156,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
               loaded.downloadFallbackExtensionIds != null &&
               sanitizedDownloadFallbackExtensionIds == null,
           defaultSearchTab: sanitizedDefaultSearchTab,
+          defaultLibraryView: _normalizeDefaultLibraryView(
+            loaded.defaultLibraryView,
+          ),
+          libraryQualityLabelMode: _normalizeLibraryQualityLabelMode(
+            loaded.libraryQualityLabelMode,
+          ),
           defaultService: loaded.defaultService,
           searchProvider: loaded.searchProvider,
           extensionVerificationBrowserMode:
@@ -252,6 +333,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> _normalizeIosDownloadDirectoryIfNeeded() async {
     if (!Platform.isIOS) return;
 
+    // A security-scoped bookmark is the source of truth for folders picked
+    // from Files: its stored path may legitimately point outside the app
+    // container, and the download flow re-resolves the real path from the
+    // bookmark. "Fixing" the path here would also drop the bookmark and
+    // silently revert the user's chosen folder.
+    if (state.downloadDirectoryBookmark.isNotEmpty) return;
+
     final currentDir = state.downloadDirectory.trim();
     if (currentDir.isEmpty) return;
 
@@ -276,6 +364,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final normalized = value.trim().toLowerCase();
     if (_searchTabValues.contains(normalized)) return normalized;
     return 'all';
+  }
+
+  String _normalizeDefaultLibraryView(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (_libraryViewValues.contains(normalized)) return normalized;
+    return 'last';
+  }
+
+  String _normalizeLibraryQualityLabelMode(String value) {
+    return value == AppSettings.libraryQualityLabelBitDepth
+        ? AppSettings.libraryQualityLabelBitDepth
+        : AppSettings.libraryQualityLabelBitrate;
   }
 
   String _normalizeExtensionVerificationBrowserMode(String value) {
@@ -360,6 +460,21 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  /// Atomically leaves SAF and persists a writable app-managed destination.
+  ///
+  /// Keeping these fields in one update avoids an intermediate saved state
+  /// where app-folder mode still points at the SAF display name, or where an
+  /// invalid tree URI can switch the mode back to SAF.
+  Future<void> useAppFolderStorage(String directory) async {
+    state = state.copyWith(
+      storageMode: 'app',
+      downloadDirectory: directory,
+      downloadDirectoryBookmark: '',
+      downloadTreeUri: '',
+    );
+    await _saveSettings();
+  }
+
   void setDownloadTreeUri(String uri, {String? displayName}) {
     final nextDisplay = displayName ?? state.downloadDirectory;
     state = state.copyWith(
@@ -385,6 +500,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setEmbedReplayGain(bool enabled) {
     state = state.copyWith(embedReplayGain: enabled);
+    _saveSettings();
+  }
+
+  void setPlaybackNormalization(bool enabled) {
+    state = state.copyWith(playbackNormalization: enabled);
     _saveSettings();
   }
 
@@ -527,6 +647,20 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setDefaultLibraryView(String view) {
+    state = state.copyWith(
+      defaultLibraryView: _normalizeDefaultLibraryView(view),
+    );
+    _saveSettings();
+  }
+
+  void setLibraryQualityLabelMode(String mode) {
+    state = state.copyWith(
+      libraryQualityLabelMode: _normalizeLibraryQualityLabelMode(mode),
+    );
+    _saveSettings();
+  }
+
   void setHomeFeedProvider(String? provider) {
     if (provider == null || provider.isEmpty) {
       state = state.copyWith(clearHomeFeedProvider: true);
@@ -573,6 +707,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setHeroAnimationsEnabled(bool enabled) {
+    state = state.copyWith(heroAnimationsEnabled: enabled);
+    _saveSettings();
+  }
+
+  void setForceBackdropBlur(bool enabled) {
+    state = state.copyWith(forceBackdropBlur: enabled);
+    _saveSettings();
+  }
+
   void setExtensionVerificationBrowserMode(String mode) {
     state = state.copyWith(
       extensionVerificationBrowserMode:
@@ -603,6 +747,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setDownloadNetworkMode(String mode) {
     state = state.copyWith(downloadNetworkMode: mode);
+    _saveSettings();
+  }
+
+  void setConcurrentDownloads(int count) {
+    state = state.copyWith(concurrentDownloads: count.clamp(1, 3));
     _saveSettings();
   }
 
@@ -669,6 +818,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setDeduplicateDownloads(bool enabled) {
     state = state.copyWith(deduplicateDownloads: enabled);
+    _saveSettings();
+  }
+
+  void setAllowQualityVariants(bool enabled) {
+    state = state.copyWith(allowQualityVariants: enabled);
     _saveSettings();
   }
 

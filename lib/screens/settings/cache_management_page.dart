@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -13,8 +12,9 @@ import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/string_utils.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class CacheManagementPage extends ConsumerStatefulWidget {
   const CacheManagementPage({super.key});
@@ -55,9 +55,11 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.snackbarError(e.toString()))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.l10n.snackbarError(context.friendlyError(e))),
+        ),
+      );
     }
   }
 
@@ -84,6 +86,9 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     final libraryCoverStatsFuture = _scanDirectory(
       Directory('${appSupportDir.path}/library_covers'),
     );
+    final audioAnalysisStatsFuture = _scanDirectory(
+      Directory('${appSupportDir.path}/audio_analysis_cache'),
+    );
 
     final prefs = await prefsFuture;
     final explorePayload = prefs.getString(_exploreCacheKey);
@@ -101,6 +106,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     final tempStats = await tempStatsFuture;
     final coverStats = await coverStatsFuture;
     final libraryCoverStats = await libraryCoverStatsFuture;
+    final audioAnalysisStats = await audioAnalysisStatsFuture;
     final trackCacheEntries = await trackCacheEntriesFuture;
 
     return _CacheOverview(
@@ -111,6 +117,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
       tempIsSameAsAppCache: tempIsSameAsAppCache,
       coverStats: coverStats,
       libraryCoverStats: libraryCoverStats,
+      audioAnalysisStats: audioAnalysisStats,
       exploreCacheBytes: exploreBytes,
       hasExploreCache: hasExploreCache,
       trackCacheEntries: trackCacheEntries,
@@ -199,6 +206,12 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     await _clearDirectoryContents(libraryCoverDir.path);
   }
 
+  Future<void> _clearAudioAnalysisCache() async {
+    final appSupportDir = await getApplicationSupportDirectory();
+    final analysisDir = Directory('${appSupportDir.path}/audio_analysis_cache');
+    await _clearDirectoryContents(analysisDir.path);
+  }
+
   Future<void> _clearExploreCache() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_exploreCacheKey);
@@ -217,6 +230,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     }
     await _clearCoverCache();
     await _clearLibraryCoverCache();
+    await _clearAudioAnalysisCache();
     await _clearExploreCache();
     await _clearTrackCache();
   }
@@ -281,9 +295,11 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.snackbarError(e.toString()))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.l10n.snackbarError(context.friendlyError(e))),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _busyAction = null);
@@ -334,21 +350,12 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
     });
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
-
   String _formatDirectorySize(_DirectoryStats stats) {
     if (stats.fileCount == 0 || stats.totalSizeBytes == 0) {
       return context.l10n.cacheNoData;
     }
     return context.l10n.cacheSizeWithFiles(
-      _formatBytes(stats.totalSizeBytes),
+      formatBytes(stats.totalSizeBytes),
       stats.fileCount,
     );
   }
@@ -375,24 +382,13 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
     final overview = _overview;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            expandedHeight: 120 + topPadding,
-            collapsedHeight: kToolbarHeight,
-            floating: false,
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            leading: IconButton(
-              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
+          AppSliverHeader.page(
+            title: context.l10n.cacheTitle,
             actions: [
               IconButton(
                 tooltip: context.l10n.cacheRefresh,
@@ -400,30 +396,6 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
                 icon: const Icon(Icons.refresh),
               ),
             ],
-            flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-              builder: (context, constraints) {
-                final maxHeight = 120 + topPadding;
-                final minHeight = kToolbarHeight + topPadding;
-                final expandRatio =
-                    ((constraints.maxHeight - minHeight) /
-                            (maxHeight - minHeight))
-                        .clamp(0.0, 1.0);
-                final leftPadding = 56 - (32 * expandRatio);
-
-                return FlexibleSpaceBar(
-                  expandedTitleScale: 1.0,
-                  titlePadding: EdgeInsets.only(left: leftPadding, bottom: 16),
-                  title: Text(
-                    context.l10n.cacheTitle,
-                    style: TextStyle(
-                      fontSize: 20 + (8 * expandRatio),
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                );
-              },
-            )]),
           ),
 
           if (_isLoading || overview == null)
@@ -452,7 +424,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
                     const SizedBox(height: 6),
                     Text(
                       context.l10n.cacheEstimatedTotal(
-                        _formatBytes(overview.totalKnownDiskCacheBytes),
+                        formatBytes(overview.totalKnownDiskCacheBytes),
                       ),
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: colorScheme.onPrimaryContainer,
@@ -553,7 +525,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
                       overview.coverStats.fileCount > 0 &&
                               overview.coverStats.totalSizeBytes > 0
                           ? context.l10n.cacheSizeWithFiles(
-                              _formatBytes(overview.coverStats.totalSizeBytes),
+                              formatBytes(overview.coverStats.totalSizeBytes),
                               overview.coverStats.fileCount,
                             )
                           : context.l10n.cacheNoData,
@@ -575,7 +547,7 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
                       overview.libraryCoverStats.fileCount > 0 &&
                               overview.libraryCoverStats.totalSizeBytes > 0
                           ? context.l10n.cacheSizeWithFiles(
-                              _formatBytes(
+                              formatBytes(
                                 overview.libraryCoverStats.totalSizeBytes,
                               ),
                               overview.libraryCoverStats.fileCount,
@@ -592,13 +564,37 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
                     ),
                   ),
                   SettingsItem(
+                    icon: Icons.graphic_eq_outlined,
+                    title: context.l10n.cacheAudioAnalysis,
+                    subtitle: _buildSubtitle(
+                      context.l10n.cacheAudioAnalysisDesc,
+                      overview.audioAnalysisStats.fileCount > 0 &&
+                              overview.audioAnalysisStats.totalSizeBytes > 0
+                          ? context.l10n.cacheSizeWithFiles(
+                              formatBytes(
+                                overview.audioAnalysisStats.totalSizeBytes,
+                              ),
+                              overview.audioAnalysisStats.fileCount,
+                            )
+                          : context.l10n.cacheNoData,
+                    ),
+                    trailing: _buildClearTrailing(
+                      'clear_audio_analysis_cache',
+                      () => _confirmAndRunAction(
+                        actionKey: 'clear_audio_analysis_cache',
+                        targetLabel: context.l10n.cacheAudioAnalysis,
+                        action: _clearAudioAnalysisCache,
+                      ),
+                    ),
+                  ),
+                  SettingsItem(
                     icon: Icons.explore_outlined,
                     title: context.l10n.cacheExploreFeed,
                     subtitle: _buildSubtitle(
                       context.l10n.cacheExploreFeedDesc,
                       overview.hasExploreCache
                           ? context.l10n.cacheSizeOnly(
-                              _formatBytes(overview.exploreCacheBytes),
+                              formatBytes(overview.exploreCacheBytes),
                             )
                           : context.l10n.cacheNoData,
                     ),
@@ -675,6 +671,7 @@ class _CacheOverview {
   final bool tempIsSameAsAppCache;
   final CacheStats coverStats;
   final _DirectoryStats libraryCoverStats;
+  final _DirectoryStats audioAnalysisStats;
   final int exploreCacheBytes;
   final bool hasExploreCache;
   final int trackCacheEntries;
@@ -687,6 +684,7 @@ class _CacheOverview {
     required this.tempIsSameAsAppCache,
     required this.coverStats,
     required this.libraryCoverStats,
+    required this.audioAnalysisStats,
     required this.exploreCacheBytes,
     required this.hasExploreCache,
     required this.trackCacheEntries,

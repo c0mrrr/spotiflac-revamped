@@ -6,28 +6,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
-import 'package:spotiflac_android/providers/store_provider.dart';
+import 'package:spotiflac_android/providers/repo_provider.dart';
+import 'package:spotiflac_android/providers/runtime_profile_provider.dart';
 import 'package:spotiflac_android/providers/track_provider.dart';
 import 'package:spotiflac_android/providers/preview_player_provider.dart';
 import 'package:spotiflac_android/screens/home_tab.dart';
 import 'package:spotiflac_android/screens/repo_tab.dart';
 import 'package:spotiflac_android/screens/queue_tab.dart';
 import 'package:spotiflac_android/screens/settings/settings_tab.dart';
-import 'package:spotiflac_android/screens/logs_tab.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/shell_navigation_service.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/music_player_service.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
 import 'package:spotiflac_android/services/app_remote_config_service.dart';
+import 'package:spotiflac_android/services/update_checker.dart';
 import 'package:spotiflac_android/widgets/app_announcement_dialog.dart';
+import 'package:spotiflac_android/widgets/update_dialog.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 import 'package:spotiflac_android/widgets/mini_player.dart';
+import 'package:spotiflac_android/widgets/selection_bottom_bar.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
 final _log = AppLogger('MainShell');
@@ -40,12 +42,17 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _currentIndex = 0;
+  // Preserves the PageView element (and its kept-alive tabs) when the body
+  // structure swaps between rail and bottom-bar layouts on rotation.
+  final GlobalKey _pageViewKey = GlobalKey();
   late final PageController _pageController;
   late final AnimationController _tabJumpTransitionController;
   bool _hasCheckedUpdate = false;
   bool _hasCheckedAppAnnouncement = false;
+  bool _initialSafRepairComplete = false;
+  bool _safRepairDialogVisible = false;
   StreamSubscription<String>? _shareSubscription;
   DateTime? _lastBackPress;
   final GlobalKey<NavigatorState> _homeTabNavigatorKey =
@@ -54,13 +61,10 @@ class _MainShellState extends ConsumerState<MainShell>
       ShellNavigationService.libraryTabNavigatorKey;
   final GlobalKey<NavigatorState> _repoTabNavigatorKey =
       ShellNavigationService.repoTabNavigatorKey;
-  final GlobalKey<NavigatorState> _logsTabNavigatorKey =
-      ShellNavigationService.logsTabNavigatorKey;
 
   late final _PreviewStopNavigatorObserver _homePreviewStopObserver;
   late final _PreviewStopNavigatorObserver _libraryPreviewStopObserver;
   late final _PreviewStopNavigatorObserver _repoPreviewStopObserver;
-  late final _PreviewStopNavigatorObserver _logsPreviewStopObserver;
 
   @override
   void didChangeDependencies() {
@@ -71,11 +75,22 @@ class _MainShellState extends ConsumerState<MainShell>
       unknownTitle: l10n.unknownTitle,
       unknownArtist: l10n.unknownArtist,
     );
+    setPlaybackNormalizationEnabled(
+      ref.read(settingsProvider).playbackNormalization,
+    );
+    // Deezer & co. localize artist/genre names by IP unless told the app's
+    // language (issue #480).
+    unawaited(
+      PlatformBridge.setMetadataLanguage(
+        Localizations.localeOf(context).toLanguageTag(),
+      ),
+    );
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _homePreviewStopObserver = _PreviewStopNavigatorObserver(
       () => ref.read(previewPlayerProvider.notifier).stop(),
     );
@@ -85,24 +100,159 @@ class _MainShellState extends ConsumerState<MainShell>
     _repoPreviewStopObserver = _PreviewStopNavigatorObserver(
       () => ref.read(previewPlayerProvider.notifier).stop(),
     );
-    _logsPreviewStopObserver = _PreviewStopNavigatorObserver(
-      () => ref.read(previewPlayerProvider.notifier).stop(),
-    );
     _pageController = PageController(initialPage: _currentIndex);
     _tabJumpTransitionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 180),
       value: 1,
     );
+    ShellNavigationService.registerTabSelectionHandler(
+      owner: this,
+      handler: _onShellTabRequested,
+    );
     ShellNavigationService.syncState(
       currentTabIndex: _currentIndex,
       showRepoTab: false,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _repairSafAccessIfNeeded(
+        knownLost: ref.read(initialSafAccessLostProvider),
+      );
+      _initialSafRepairComplete = true;
+      if (!mounted) return;
+      unawaited(restorePersistedPlaybackSession());
       _setupShareListener();
-      _checkSafMigration();
-      await _checkAppAnnouncement();
+      await _checkSafMigration();
+      final updateDialogShown = await _checkForUpdates();
+      if (!updateDialogShown) {
+        await _checkAppAnnouncement();
+      }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _initialSafRepairComplete) {
+      unawaited(_repairSafAccessIfNeeded());
+    } else if (state == AppLifecycleState.paused) {
+      unawaited(persistCurrentPlaybackSession());
+    }
+  }
+
+  Future<void> _repairSafAccessIfNeeded({bool knownLost = false}) async {
+    if (!Platform.isAndroid || _safRepairDialogVisible) return;
+
+    var accessLost = knownLost;
+    if (!accessLost) {
+      final settings = ref.read(settingsProvider);
+      if (settings.storageMode != 'saf' || settings.downloadTreeUri.isEmpty) {
+        return;
+      }
+      accessLost = !await PlatformBridge.isSafTreeAccessible(
+        settings.downloadTreeUri,
+      );
+    }
+    if (!accessLost || !mounted) return;
+
+    _safRepairDialogVisible = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          var isPickingFolder = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return PopScope(
+                canPop: false,
+                child: AlertDialog(
+                  icon: Icon(
+                    Icons.folder_off_outlined,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(context.l10n.downloadFolderAccessLostTitle),
+                  content: Text(context.l10n.downloadFolderAccessLostSubtitle),
+                  actions: [
+                    TextButton(
+                      onPressed: isPickingFolder
+                          ? null
+                          : () {
+                              final notifier = ref.read(
+                                settingsProvider.notifier,
+                              );
+                              notifier.setStorageMode('app');
+                              notifier.setDownloadTreeUri('');
+                              notifier.setDownloadDirectory('');
+                              Navigator.of(dialogContext).pop();
+                            },
+                      child: Text(context.l10n.storageModeAppFolder),
+                    ),
+                    FilledButton(
+                      onPressed: isPickingFolder
+                          ? null
+                          : () async {
+                              setDialogState(() => isPickingFolder = true);
+                              try {
+                                final result =
+                                    await PlatformBridge.pickSafTree();
+                                if (result == null) return;
+                                final treeUri =
+                                    result['tree_uri'] as String? ?? '';
+                                final displayName =
+                                    result['display_name'] as String? ?? '';
+                                if (treeUri.isEmpty) return;
+
+                                final notifier = ref.read(
+                                  settingsProvider.notifier,
+                                );
+                                notifier.setStorageMode('saf');
+                                notifier.setDownloadTreeUri(
+                                  treeUri,
+                                  displayName: displayName.isNotEmpty
+                                      ? displayName
+                                      : treeUri,
+                                );
+                                if (dialogContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                }
+                              } catch (e) {
+                                _log.w(
+                                  'Failed to repair SAF access from startup: $e',
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        context.l10n.snackbarCannotOpenFile(
+                                          context.friendlyError(e),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (dialogContext.mounted) {
+                                  setDialogState(() => isPickingFolder = false);
+                                }
+                              }
+                            },
+                      child: isPickingFolder
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(context.l10n.downloadFolderReselect),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      _safRepairDialogVisible = false;
+    }
   }
 
   void _setupShareListener() {
@@ -153,13 +303,49 @@ class _MainShellState extends ConsumerState<MainShell>
           : isRateLimit
           ? l10n.errorRateLimitedMessage
           : l10n.errorUrlFetchFailed;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(displayMessage)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(displayMessage),
+          // Retrying an unrecognized URL is deterministic; skip the action.
+          action: errorMsg == 'url_not_recognized'
+              ? null
+              : SnackBarAction(
+                  label: l10n.dialogRetry,
+                  onPressed: () => _handleSharedUrl(url),
+                ),
+        ),
+      );
     }
   }
 
+  Future<bool> _checkForUpdates() async {
+    if (_hasCheckedUpdate) return false;
+    _hasCheckedUpdate = true;
 
+    final settings = ref.read(settingsProvider);
+
+    // The check runs even when the user disabled update prompts: versions
+    // that fall forceUpdateThreshold stable releases behind must update, and
+    // that enforcement cannot be opted out of.
+    final updateInfo = await UpdateChecker.checkForUpdate(
+      channel: settings.updateChannel,
+    );
+    if (updateInfo == null || !mounted) return false;
+
+    final forced =
+        updateInfo.releasesBehind >= UpdateChecker.forceUpdateThreshold;
+    if (!forced && !settings.checkForUpdates) return false;
+
+    showUpdateDialog(
+      context,
+      updateInfo: updateInfo,
+      forced: forced,
+      onDisableUpdates: () {
+        ref.read(settingsProvider.notifier).setCheckForUpdates(false);
+      },
+    );
+    return true;
+  }
 
   Future<void> _checkAppAnnouncement() async {
     if (_hasCheckedAppAnnouncement) return;
@@ -212,14 +398,18 @@ class _MainShellState extends ConsumerState<MainShell>
           color: colorScheme.primary,
         ),
         title: Text(context.l10n.safMigrationTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.l10n.safMigrationMessage1),
-            const SizedBox(height: 12),
-            Text(context.l10n.safMigrationMessage2),
-          ],
+        content: ConstrainedBox(
+          // Keeps the text column readable on tablets/landscape.
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(context.l10n.safMigrationMessage1),
+              const SizedBox(height: 12),
+              Text(context.l10n.safMigrationMessage2),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -259,6 +449,8 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ShellNavigationService.unregisterTabSelectionHandler(this);
     _shareSubscription?.cancel();
     _pageController.dispose();
     _tabJumpTransitionController.dispose();
@@ -276,6 +468,19 @@ class _MainShellState extends ConsumerState<MainShell>
     // clear _urlController (it checks !_searchFocusNode.hasFocus)
     FocusManager.instance.primaryFocus?.unfocus();
     ref.read(trackProvider.notifier).clear();
+  }
+
+  void _onShellTabRequested(ShellTab tab) {
+    final showStore = ref.read(
+      settingsProvider.select((s) => s.showExtensionStore),
+    );
+    final index = switch (tab) {
+      ShellTab.home => 0,
+      ShellTab.library => 1,
+      ShellTab.repository => showStore ? 2 : null,
+      ShellTab.settings => showStore ? 3 : 2,
+    };
+    if (index != null) _onNavTap(index);
   }
 
   void _onNavTap(int index) {
@@ -447,26 +652,32 @@ class _MainShellState extends ConsumerState<MainShell>
     if (index == 0) return _homeTabNavigatorKey.currentState;
     if (index == 1) return _libraryTabNavigatorKey.currentState;
     if (showStore && index == 2) return _repoTabNavigatorKey.currentState;
-    if (showStore && index == 3) return _logsTabNavigatorKey.currentState;
-    if (!showStore && index == 2) return _logsTabNavigatorKey.currentState;
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final enableBlur = ref.watch(themeProvider).enableBlur;
+    ref.listen(settingsProvider.select((s) => s.playbackNormalization), (
+      _,
+      enabled,
+    ) {
+      setPlaybackNormalizationEnabled(enabled);
+    });
     final queueState = ref.watch(
       downloadQueueProvider.select((s) => s.queuedCount),
     );
     final showStore = ref.watch(
       settingsProvider.select((s) => s.showExtensionStore),
     );
+    final heroAnimationsEnabled = ref.watch(
+      settingsProvider.select((s) => s.heroAnimationsEnabled),
+    );
     ShellNavigationService.syncState(
       currentTabIndex: _currentIndex,
       showRepoTab: showStore,
     );
     final repoUpdatesCount = ref.watch(
-      storeProvider.select((s) => s.updatesAvailableCount),
+      repoProvider.select((s) => s.updatesAvailableCount),
     );
 
     final tabs = <Widget>[
@@ -474,12 +685,14 @@ class _MainShellState extends ConsumerState<MainShell>
         key: const ValueKey('tab-home'),
         navigatorKey: _homeTabNavigatorKey,
         observers: [_homePreviewStopObserver],
+        heroAnimationsEnabled: heroAnimationsEnabled,
         child: const HomeTab(),
       ),
       _TabNavigator(
         key: const ValueKey('tab-library'),
         navigatorKey: _libraryTabNavigatorKey,
         observers: [_libraryPreviewStopObserver],
+        heroAnimationsEnabled: heroAnimationsEnabled,
         child: _LibraryTabRoot(parentPageController: _pageController),
       ),
       if (showStore)
@@ -487,14 +700,9 @@ class _MainShellState extends ConsumerState<MainShell>
           key: const ValueKey('tab-repo'),
           navigatorKey: _repoTabNavigatorKey,
           observers: [_repoPreviewStopObserver],
+          heroAnimationsEnabled: heroAnimationsEnabled,
           child: const RepoTab(),
         ),
-      _TabNavigator(
-        key: const ValueKey('tab-logs'),
-        navigatorKey: _logsTabNavigatorKey,
-        observers: [_logsPreviewStopObserver],
-        child: const LogsTab(),
-      ),
       const SettingsTab(),
     ];
 
@@ -549,11 +757,6 @@ class _MainShellState extends ConsumerState<MainShell>
           label: l10n.navStore,
         ),
       NavigationDestination(
-        icon: const Icon(Icons.terminal_outlined),
-        selectedIcon: const Icon(Icons.terminal),
-        label: l10n.navLogs,
-      ),
-      NavigationDestination(
         icon: const Icon(Icons.settings_outlined),
         selectedIcon: SpinIcon(child: const Icon(Icons.settings)),
         label: l10n.navSettings,
@@ -570,121 +773,196 @@ class _MainShellState extends ConsumerState<MainShell>
       });
     }
 
-    return BackButtonListener(
-      onBackButtonPressed: () async {
-        await _handleBackPress();
-        return true;
-      },
-      child: Scaffold(
-        extendBody: true,
-        body: AnimatedBuilder(
-          animation: _tabJumpTransitionController,
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: tabs.length,
-            onPageChanged: _onPageChanged,
-            physics: const NeverScrollableScrollPhysics(),
-            itemBuilder: (context, index) => _KeepAliveTabPage(
-              key: ValueKey('page-$index'),
+    // Material breakpoint: rail navigation on tablet/landscape widths, the
+    // bottom NavigationBar on phones.
+    final useNavigationRail = MediaQuery.sizeOf(context).width >= 600;
+
+    final pageView = KeyedSubtree(
+      key: _pageViewKey,
+      child: AnimatedBuilder(
+        animation: _tabJumpTransitionController,
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: tabs.length,
+          onPageChanged: _onPageChanged,
+          physics: const NeverScrollableScrollPhysics(),
+          // TickerMode mutes animations and lets visibility-aware widgets
+          // (e.g. MotionHeaderBanner) pause when their tab is hidden —
+          // kept-alive pages otherwise keep running offscreen.
+          itemBuilder: (context, index) => _KeepAliveTabPage(
+            key: ValueKey('page-$index'),
+            child: TickerMode(
+              enabled: index == _currentIndex,
               child: tabs[index],
             ),
           ),
-          builder: (context, child) {
-            final t = Curves.easeOutCubic.transform(
-              _tabJumpTransitionController.value,
-            );
-            return Opacity(
-              opacity: t,
-              child: Transform.scale(scale: 0.985 + (0.015 * t), child: child),
-            );
-          },
         ),
-        bottomNavigationBar: enableBlur
-            ? ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const MiniPlayer(),
-                      DecoratedBox(
-                        position: DecorationPosition.foreground,
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+        builder: (context, child) {
+          final t = Curves.easeOutCubic.transform(
+            _tabJumpTransitionController.value,
+          );
+          return Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 0.985 + (0.015 * t), child: child),
+          );
+        },
+      ),
+    );
+
+    return SelectionOverlayHost(
+      child: BackButtonListener(
+        onBackButtonPressed: () async {
+          await _handleBackPress();
+          return true;
+        },
+        child: Scaffold(
+          extendBody: true,
+          // The page view keeps one element across the rail<->bar structure
+          // swap via _pageViewKey; without it a rotation past the 600dp
+          // breakpoint remounts the PageView and snaps back to the first tab.
+          body: useNavigationRail
+              ? Row(
+                  children: [
+                    SafeArea(
+                      right: false,
+                      bottom: false,
+                      // The rail needs ~300dp of height for four labeled
+                      // destinations; on short viewports (landscape phone with
+                      // the mini player showing) it must scroll, not overflow.
+                      child: LayoutBuilder(
+                        builder: (context, constraints) =>
+                            SingleChildScrollView(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: IntrinsicHeight(
+                                  child: NavigationRail(
+                                    selectedIndex: _currentIndex.clamp(
+                                      0,
+                                      maxIndex,
+                                    ),
+                                    onDestinationSelected: _onNavTap,
+                                    labelType: NavigationRailLabelType.all,
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainer,
+                                    destinations: [
+                                      for (final destination in destinations)
+                                        NavigationRailDestination(
+                                          icon: destination.icon,
+                                          selectedIcon:
+                                              destination.selectedIcon,
+                                          label: Text(destination.label),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        child: NavigationBar(
-                          selectedIndex: _currentIndex.clamp(0, maxIndex),
-                          onDestinationSelected: _onNavTap,
-                          animationDuration: const Duration(milliseconds: 500),
-                          elevation: 0,
-                          height: 64,
-                          backgroundColor: settingsGroupColor(
-                            context,
-                          ).withValues(alpha: 0.72),
-                          destinations: destinations,
-                        ),
                       ),
-                    ],
-                  ),
-                ),
-              )
-            : Column(
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(child: pageView),
+                  ],
+                )
+              : pageView,
+          bottomNavigationBar: Builder(
+            builder: (context) {
+              final bottomBar = Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const MiniPlayer(),
-                  DecoratedBox(
-                    position: DecorationPosition.foreground,
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  if (!useNavigationRail)
+                    DecoratedBox(
+                      position: DecorationPosition.foreground,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          ),
                         ),
                       ),
+                      child: NavigationBar(
+                        selectedIndex: _currentIndex.clamp(0, maxIndex),
+                        onDestinationSelected: _onNavTap,
+                        animationDuration: const Duration(milliseconds: 500),
+                        elevation: 0,
+                        height: 64,
+                        backgroundColor: settingsGroupColor(
+                          context,
+                        ).withValues(alpha: 0.72),
+                        destinations: destinations,
+                      ),
                     ),
-                    child: NavigationBar(
-                      selectedIndex: _currentIndex.clamp(0, maxIndex),
-                      onDestinationSelected: _onNavTap,
-                      animationDuration: const Duration(milliseconds: 500),
-                      elevation: 0,
-                      height: 64,
-                      backgroundColor: settingsGroupColor(context),
-                      destinations: destinations,
-                    ),
-                  ),
                 ],
-              ),
+              );
+              // The backdrop blur re-filters everything scrolling underneath on
+              // every frame; low-end devices get an opaque base instead unless
+              // the user forces blur on in appearance settings.
+              if (!ref.watch(backdropBlurEnabledProvider)) {
+                return ColoredBox(
+                  color: settingsGroupColor(context),
+                  child: bottomBar,
+                );
+              }
+              return ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  blendMode: BlendMode.src,
+                  child: bottomBar,
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 }
 
-class _TabNavigator extends StatelessWidget {
+class _TabNavigator extends StatefulWidget {
   final GlobalKey<NavigatorState> navigatorKey;
   final Widget child;
   final List<NavigatorObserver> observers;
+  final bool heroAnimationsEnabled;
 
   const _TabNavigator({
     super.key,
     required this.navigatorKey,
     required this.child,
     this.observers = const [],
+    required this.heroAnimationsEnabled,
   });
+
+  @override
+  State<_TabNavigator> createState() => _TabNavigatorState();
+}
+
+class _TabNavigatorState extends State<_TabNavigator> {
+  // Nested navigators get no HeroController from MaterialApp; without one,
+  // Hero widgets on routes pushed inside a tab never fly.
+  final HeroController _heroController =
+      MaterialApp.createMaterialHeroController();
+
+  @override
+  void dispose() {
+    _heroController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Navigator(
-      key: navigatorKey,
-      observers: observers,
+      key: widget.navigatorKey,
+      observers: [
+        if (widget.heroAnimationsEnabled) _heroController,
+        ...widget.observers,
+      ],
       onGenerateInitialRoutes: (_, _) => [
-        MaterialPageRoute<void>(builder: (_) => child),
+        MaterialPageRoute<void>(builder: (_) => widget.child),
       ],
     );
   }
@@ -831,60 +1109,6 @@ class _SlidingIconState extends State<SlidingIcon>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(position: _offsetAnimation, child: widget.child),
-    );
-  }
-}
-
-class SwingIcon extends StatefulWidget {
-  final Widget child;
-  const SwingIcon({super.key, required this.child});
-
-  @override
-  State<SwingIcon> createState() => _SwingIconState();
-}
-
-class _SwingIconState extends State<SwingIcon>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _rotationAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-
-    _rotationAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: -0.2), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: -0.2, end: 0.15), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 0.15, end: -0.1), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: -0.1, end: 0.05), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 0.05, end: 0.0), weight: 20),
-    ]).animate(_controller);
-
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _rotationAnimation,
-      builder: (context, child) {
-        return Transform.rotate(
-          angle: _rotationAnimation.value,
-          alignment: Alignment.topCenter,
-          child: child,
-        );
-      },
-      child: widget.child,
     );
   }
 }

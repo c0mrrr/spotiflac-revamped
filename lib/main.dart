@@ -6,14 +6,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotiflac_android/app.dart';
+import 'package:spotiflac_android/models/settings.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
-import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
+import 'package:spotiflac_android/providers/runtime_profile_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
+import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
+import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
+import 'package:spotiflac_android/services/app_state_database.dart';
 import 'package:spotiflac_android/utils/local_library_scan_prefs.dart';
 import 'package:spotiflac_android/utils/logger.dart';
 
@@ -36,11 +40,31 @@ void main() {
         return true;
       };
 
-      final runtimeProfile = await _resolveRuntimeProfile();
+      final prefs = await SharedPreferences.getInstance();
+      await _prepareAndroidInstallationState(prefs);
+      final bootstrapSettings = loadBootstrapSettings(prefs);
+      final bootstrapTheme = loadBootstrapThemeSettings(prefs);
+      final initialSafAccessLost = await _detectInitialSafAccessLoss(
+        bootstrapSettings,
+      );
+      final runtimeProfile = await _resolveRuntimeProfile(prefs);
       _configureImageCache(runtimeProfile);
 
       runApp(
         ProviderScope(
+          overrides: [
+            lowEndDeviceProvider.overrideWithValue(
+              runtimeProfile.disableOverscrollEffects,
+            ),
+            deviceSupportsBackdropBlurProvider.overrideWithValue(
+              runtimeProfile.enableBackdropBlur,
+            ),
+            initialSettingsProvider.overrideWithValue(bootstrapSettings),
+            initialSafAccessLostProvider.overrideWithValue(
+              initialSafAccessLost,
+            ),
+            initialThemeSettingsProvider.overrideWithValue(bootstrapTheme),
+          ],
           child: _EagerInitialization(
             child: SpotiFLACApp(
               disableOverscrollEffects: runtimeProfile.disableOverscrollEffects,
@@ -55,14 +79,68 @@ void main() {
   );
 }
 
-Future<_RuntimeProfile> _resolveRuntimeProfile() async {
-  const defaults = _RuntimeProfile(
-    imageCacheMaximumSize: 240,
-    imageCacheMaximumSizeBytes: 60 << 20,
-    disableOverscrollEffects: false,
-  );
+const _runtimeProfileTierKey = 'runtime_profile_tier_v1';
 
-  if (!Platform.isAndroid) return defaults;
+Future<void> _prepareAndroidInstallationState(SharedPreferences prefs) async {
+  if (!Platform.isAndroid) return;
+
+  try {
+    final hasPersistedSettings = hasPersistedAppSettings(prefs);
+    final installState = await PlatformBridge.ensureInstallMarker();
+    final shouldReset = shouldResetRestoredInstallation(
+      hasPersistedSettings: hasPersistedSettings,
+      installState: installState,
+    );
+    if (!shouldReset) return;
+
+    _log.w(
+      'Android restored state into a fresh installation; resetting '
+      'installation-bound settings',
+    );
+    await resetRestoredInstallationSettings(prefs);
+    await prefs.remove(_runtimeProfileTierKey);
+    await prefs.remove(localLibraryLastScannedAtKey);
+    await AppStateDatabase.instance.clearPendingQueueAfterInstallationRestore();
+  } catch (e) {
+    // Startup SAF validation remains the second line of defense if an OEM or
+    // bridge implementation prevents install-marker inspection.
+    _log.w('Failed to inspect restored installation state: $e');
+  }
+}
+
+Future<bool> _detectInitialSafAccessLoss(AppSettings settings) async {
+  if (!Platform.isAndroid ||
+      settings.isFirstLaunch ||
+      settings.storageMode != 'saf' ||
+      settings.downloadTreeUri.isEmpty) {
+    return false;
+  }
+
+  try {
+    return !await PlatformBridge.validateSafTreeAccess(
+      settings.downloadTreeUri,
+    );
+  } catch (e) {
+    // A transient bridge failure must not trap the user at launch. Download
+    // preflight validates strictly again before any write starts.
+    _log.w('Failed to validate SAF access during startup: $e');
+    return false;
+  }
+}
+
+Future<_RuntimeProfile> _resolveRuntimeProfile(SharedPreferences prefs) async {
+  final cachedTier = prefs.getString(_runtimeProfileTierKey);
+  if (cachedTier != null) {
+    final cached = _RuntimeProfile.fromTier(cachedTier);
+    if (cached != null) return cached;
+  }
+
+  const defaults = _RuntimeProfile.standard();
+
+  if (!Platform.isAndroid) {
+    await prefs.setString(_runtimeProfileTierKey, defaults.tier);
+    return defaults;
+  }
 
   try {
     final androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -70,15 +148,13 @@ Future<_RuntimeProfile> _resolveRuntimeProfile() async {
     final isLowRamDevice =
         androidInfo.isLowRamDevice || androidInfo.physicalRamSize <= 2500;
 
-    if (!isArm32Only && !isLowRamDevice) {
-      return defaults;
-    }
-
-    return _RuntimeProfile(
-      imageCacheMaximumSize: 120,
-      imageCacheMaximumSizeBytes: 24 << 20,
-      disableOverscrollEffects: true,
-    );
+    final profile = (isArm32Only || isLowRamDevice)
+        ? const _RuntimeProfile.low()
+        : androidInfo.physicalRamSize >= 6000
+        ? const _RuntimeProfile.high()
+        : defaults;
+    await prefs.setString(_runtimeProfileTierKey, profile.tier);
+    return profile;
   } catch (e) {
     debugPrint('Failed to resolve runtime profile: $e');
     return defaults;
@@ -94,15 +170,53 @@ void _configureImageCache(_RuntimeProfile runtimeProfile) {
 }
 
 class _RuntimeProfile {
+  final String tier;
   final int imageCacheMaximumSize;
   final int imageCacheMaximumSizeBytes;
   final bool disableOverscrollEffects;
+  final bool enableBackdropBlur;
 
-  const _RuntimeProfile({
+  const _RuntimeProfile._({
+    required this.tier,
     required this.imageCacheMaximumSize,
     required this.imageCacheMaximumSizeBytes,
     required this.disableOverscrollEffects,
+    required this.enableBackdropBlur,
   });
+
+  const _RuntimeProfile.low()
+    : this._(
+        tier: 'low',
+        imageCacheMaximumSize: 120,
+        imageCacheMaximumSizeBytes: 24 << 20,
+        disableOverscrollEffects: true,
+        enableBackdropBlur: false,
+      );
+
+  const _RuntimeProfile.standard()
+    : this._(
+        tier: 'standard',
+        imageCacheMaximumSize: 240,
+        imageCacheMaximumSizeBytes: 60 << 20,
+        disableOverscrollEffects: false,
+        enableBackdropBlur: false,
+      );
+
+  const _RuntimeProfile.high()
+    : this._(
+        tier: 'high',
+        imageCacheMaximumSize: 320,
+        imageCacheMaximumSizeBytes: 80 << 20,
+        disableOverscrollEffects: false,
+        enableBackdropBlur: true,
+      );
+
+  static _RuntimeProfile? fromTier(String tier) => switch (tier) {
+    'low' => const _RuntimeProfile.low(),
+    'standard' => const _RuntimeProfile.standard(),
+    'high' => const _RuntimeProfile.high(),
+    _ => null,
+  };
 }
 
 class _EagerInitialization extends ConsumerStatefulWidget {
@@ -118,7 +232,6 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization>
     with WidgetsBindingObserver {
   ProviderSubscription<bool>? _localLibraryEnabledSub;
   Timer? _downloadHistoryWarmupTimer;
-  Timer? _libraryCollectionsWarmupTimer;
   Timer? _localLibraryWarmupTimer;
   bool _localLibraryWarmupScheduled = false;
   bool _autoScanTriggeredOnLaunch = false;
@@ -140,7 +253,6 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization>
     WidgetsBinding.instance.removeObserver(this);
     _localLibraryEnabledSub?.close();
     _downloadHistoryWarmupTimer?.cancel();
-    _libraryCollectionsWarmupTimer?.cancel();
     _localLibraryWarmupTimer?.cancel();
     super.dispose();
   }
@@ -149,7 +261,31 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _maybeAutoScanLocalLibrary();
+    } else if (state == AppLifecycleState.paused) {
+      // Last reliable moment before the OS may kill the process: make sure
+      // any debounced download-queue persistence reaches disk.
+      if (ref.exists(downloadQueueProvider)) {
+        unawaited(
+          ref.read(downloadQueueProvider.notifier).flushQueuePersistence(),
+        );
+      }
+      // Backgrounded: return the Go heap's high-water mark to the OS so the
+      // process is a smaller kill target.
+      unawaited(PlatformBridge.releaseNativeMemory());
     }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    // OS memory pressure: drop decoded bitmaps (disk caches stay intact) and
+    // have the Go side release freed heap back to the OS.
+    final imageCache = PaintingBinding.instance.imageCache;
+    imageCache.clear();
+    imageCache.clearLiveImages();
+    if (CoverCacheManager.isInitialized) {
+      CoverCacheManager.instance.store.emptyMemoryCache();
+    }
+    unawaited(PlatformBridge.releaseNativeMemory(underPressure: true));
   }
 
   void _initializeDeferredProviders() {
@@ -157,11 +293,6 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization>
       const Duration(milliseconds: 400),
       () => ref.read(downloadHistoryProvider),
     );
-    _libraryCollectionsWarmupTimer = _scheduleProviderWarmup(
-      const Duration(milliseconds: 900),
-      () => ref.read(libraryCollectionsProvider),
-    );
-
     _maybeScheduleLocalLibraryWarmup(
       ref.read(
         settingsProvider.select((settings) => settings.localLibraryEnabled),
@@ -247,6 +378,7 @@ class _EagerInitializationState extends ConsumerState<_EagerInitialization>
   Future<void> _initializeAppServices() async {
     try {
       await CoverCacheManager.initialize();
+      CoverCacheManager.scheduleMaintenance();
       await Future.wait([
         NotificationService().initialize(),
         ShareIntentService().initialize(),

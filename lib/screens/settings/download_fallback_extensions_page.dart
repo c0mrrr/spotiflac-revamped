@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
-import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/utils/adaptive_layout.dart';
+import 'package:spotiflac_android/widgets/discard_changes_dialog.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
+import 'package:spotiflac_android/widgets/app_sliver_header.dart';
 
 class DownloadFallbackExtensionsPage extends ConsumerStatefulWidget {
   const DownloadFallbackExtensionsPage({super.key});
@@ -53,13 +54,13 @@ class _DownloadFallbackExtensionsPageState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPadding = normalizedHeaderTopPadding(context);
+    final wideInset = wideListInset(context);
 
     return PopScope(
       canPop: !_hasChanges,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldPop = await _confirmDiscard(context);
+        final shouldPop = await showDiscardChangesDialog(context);
         if (shouldPop && context.mounted) {
           Navigator.pop(context);
         }
@@ -67,19 +68,14 @@ class _DownloadFallbackExtensionsPageState
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              expandedHeight: 120 + topPadding,
-              collapsedHeight: kToolbarHeight,
-              floating: false,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
+            AppSliverHeader.page(
+              title: context.l10n.extensionsFallbackTitle,
               leading: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () async {
                   if (_hasChanges) {
-                    final shouldPop = await _confirmDiscard(context);
+                    final shouldPop = await showDiscardChangesDialog(context);
                     if (shouldPop && context.mounted) {
                       Navigator.pop(context);
                     }
@@ -95,36 +91,15 @@ class _DownloadFallbackExtensionsPageState
                     child: Text(context.l10n.dialogSave),
                   ),
               ],
-              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxHeight = 120 + topPadding;
-                  final minHeight = kToolbarHeight + topPadding;
-                  final expandRatio =
-                      ((constraints.maxHeight - minHeight) /
-                              (maxHeight - minHeight))
-                          .clamp(0.0, 1.0);
-                  final leftPadding = 56 - (32 * expandRatio);
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.0,
-                    titlePadding: EdgeInsets.only(
-                      left: leftPadding,
-                      bottom: 16,
-                    ),
-                    title: Text(
-                      context.l10n.extensionsFallbackTitle,
-                      style: TextStyle(
-                        fontSize: 20 + (8 * expandRatio),
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  );
-                },
-              )]),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16 + wideInset,
+                  16,
+                  16 + wideInset,
+                  16,
+                ),
                 child: Text(
                   context.l10n.providerPriorityFallbackExtensionsDescription,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -136,7 +111,7 @@ class _DownloadFallbackExtensionsPageState
             if (_extensions.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: EdgeInsets.symmetric(horizontal: 16 + wideInset),
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -156,7 +131,7 @@ class _DownloadFallbackExtensionsPageState
               ),
             if (_extensions.isNotEmpty)
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: 16 + wideInset),
                 sliver: SliverToBoxAdapter(
                   child: SettingsGroup(
                     margin: EdgeInsets.zero,
@@ -189,7 +164,12 @@ class _DownloadFallbackExtensionsPageState
             if (_extensions.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: EdgeInsets.fromLTRB(
+                    16 + wideInset,
+                    8,
+                    16 + wideInset,
+                    0,
+                  ),
                   child: Text(
                     context.l10n.providerPriorityFallbackExtensionsHint,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -203,27 +183,6 @@ class _DownloadFallbackExtensionsPageState
         ),
       ),
     );
-  }
-
-  Future<bool> _confirmDiscard(BuildContext context) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.dialogDiscardChanges),
-        content: Text(context.l10n.dialogUnsavedChanges),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.dialogCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.l10n.dialogDiscard),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
   }
 
   void _saveChanges() {

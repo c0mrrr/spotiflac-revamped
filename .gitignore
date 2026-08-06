@@ -1,2 +1,98 @@
-build/  
-.dart_tool/ 
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and local assistants
+.idea/
+.vscode/
+*.iml
+.cursorignore
+.cursorrules
+.kiro/
+.playwright-mcp/
+.rtk/
+.claude/settings.local.json
+CLAUDE.md
+AGENTS.md
+
+# Flutter and Dart
+.dart_tool/
+.fvm/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+/build/
+/coverage/
+*.apk
+*.aab
+*.ipa
+
+# Local JavaScript tooling (the app itself has no Node dependency)
+/node_modules/
+/bun.lock
+/package-lock.json
+
+# Go backend build outputs
+/go_backend/*.aar
+/go_backend/*.jar
+/go_backend/*.exe
+/go_backend/*.xcframework/
+
+# Android build state and signing material
+/android/.gradle/
+/android/.kotlin/
+/android/app/build/
+/android/app/libs/*.aar
+/android/app/libs/*-sources.jar
+/android/local.properties
+/android/*.iml
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+/android/app/*.jks
+
+# iOS generated state
+/ios/Frameworks/
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/ephemeral/
+/ios/Flutter/Flutter.framework/
+/ios/Flutter/Flutter.podspec
+*.xcarchive
+DerivedData/
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+*.mobileprovision
+*.p12
+*.pem
+
+# Local research and design material
+/design/
+/referensi/
+/extension/
+/tool/
+/spotiflac_android/
+
+# Documentation published separately. Keep the in-repo extension contract
+# available because contribution templates link to it.
+/docs/*
+!/docs/EXTENSION_DEVELOPMENT.md
+
+# Temporary files and logs
+/.tmp/
+nul
+NUL
+/network_requests.txt
+/AndroidManifest.xml
+*.bak
+*.orig
+*.swp
+*.tmp
+*.log
+hs_err_*.log
+flutter_*.log

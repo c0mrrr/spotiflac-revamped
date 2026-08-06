@@ -1,4 +1,4 @@
-import 'dart:ui' as dart_ui;
+
 import 'package:flutter/material.dart';
 import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,7 +69,7 @@ elevation: 0,
           controller: _searchController,
           style: TextStyle(color: colorScheme.onSurface),
           decoration: InputDecoration(
-            hintText: context.l10n.searchTracksHint,
+            hintText: 'Search...',
             hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
@@ -110,7 +110,8 @@ class _SearchResultsBody extends ConsumerWidget {
             child: Text(error, style: TextStyle(color: colorScheme.error)),
           ),
         Expanded(
-          child: AnimatedStateSwitcher(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
             child: isLoading && tracks.isEmpty
                 ? const TrackListSkeleton(key: ValueKey('loading'))
                 : tracks.isEmpty
@@ -148,7 +149,7 @@ class _SearchEmptyState extends StatelessWidget {
           Icon(Icons.search, size: 64, color: colorScheme.onSurfaceVariant),
           const SizedBox(height: 16),
           Text(
-            context.l10n.searchTracksEmptyPrompt,
+            'Search for tracks',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
