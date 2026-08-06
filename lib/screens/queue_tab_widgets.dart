@@ -203,3 +203,46 @@ class _AnimatedOverlayBottomBarState extends State<_AnimatedOverlayBottomBar>
     );
   }
 }
+
+class _LibrarySizeFooter extends ConsumerWidget {
+  final int totalSongs;
+
+  const _LibrarySizeFooter({required this.totalSongs});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sizeAsync = ref.watch(librarySizeProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            context.l10n.queueTrackCount(totalSongs),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
+          ),
+          const SizedBox(height: 8),
+          sizeAsync.when(
+            data: (size) => Text(
+              _formatDownloadSizeMB(size),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            loading: () => const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            error: (e, _) => const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}

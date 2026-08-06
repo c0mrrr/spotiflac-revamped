@@ -7,6 +7,8 @@ class ShellNavigationService {
       GlobalKey<NavigatorState>();
   static final GlobalKey<NavigatorState> repoTabNavigatorKey =
       GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> logsTabNavigatorKey =
+      GlobalKey<NavigatorState>();
 
   static int _currentTabIndex = 0;
   static bool _showRepoTab = false;
@@ -24,6 +26,12 @@ class ShellNavigationService {
     if (_currentTabIndex == 1) return libraryTabNavigatorKey.currentState;
     if (_showRepoTab && _currentTabIndex == 2) {
       return repoTabNavigatorKey.currentState;
+    }
+    if (_showRepoTab && _currentTabIndex == 3) {
+      return logsTabNavigatorKey.currentState;
+    }
+    if (!_showRepoTab && _currentTabIndex == 2) {
+      return logsTabNavigatorKey.currentState;
     }
     return null;
   }

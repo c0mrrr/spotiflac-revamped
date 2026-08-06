@@ -24,6 +24,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get navStore => 'Repo';
 
   @override
+  String get navLogs => 'Logs';
+
+  @override
   String get homeTitle => 'ホーム';
 
   @override
@@ -108,6 +111,13 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get appearanceDynamicColorSubtitle => '壁紙の色を使用する';
+
+  @override
+  String get appearanceArtworkBackground => 'Animated Artwork Background';
+
+  @override
+  String get appearanceArtworkBackgroundSubtitle =>
+      'Smoothly animate blurry metadata song image colors';
 
   @override
   String get appearanceHistoryView => '履歴の表示';
@@ -4482,6 +4492,26 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nowPlayingOpenInExternalPlayer => 'Open in external player';
+
+  @override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
+  String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
+
+  @override
+  String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
+
+  @override
+  String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedSyncedLyrics =>
+      'Time-synced lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedWordSyncedLyrics =>
+      'Word-synced lyrics copied to clipboard';
 
   @override
   String get nowPlayingTabPlayer => 'Player';

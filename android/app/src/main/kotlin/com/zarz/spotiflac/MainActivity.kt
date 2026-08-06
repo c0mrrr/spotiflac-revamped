@@ -2402,6 +2402,29 @@ class MainActivity: FlutterFragmentActivity() {
                             }
                             result.success(deleted)
                         }
+                        "safTreeSize" -> {
+                            val uriStr = call.argument<String>("uri") ?: ""
+                            val response = withContext(Dispatchers.IO) {
+                                val uri = Uri.parse(uriStr)
+                                val doc = DocumentFile.fromTreeUri(this@MainActivity, uri)
+                                var size = 0L
+                                fun calculateSize(dir: DocumentFile) {
+                                    val files = dir.listFiles()
+                                    for (file in files) {
+                                        if (file.isDirectory) {
+                                            calculateSize(file)
+                                        } else {
+                                            size += file.length()
+                                        }
+                                    }
+                                }
+                                if (doc != null && doc.isDirectory) {
+                                    calculateSize(doc)
+                                }
+                                size
+                            }
+                            result.success(response)
+                        }
                         "safStat" -> {
                             val uriStr = call.argument<String>("uri") ?: ""
                             val response = withContext(Dispatchers.IO) {

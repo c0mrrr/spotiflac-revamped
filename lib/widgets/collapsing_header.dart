@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:spotiflac_android/utils/app_bar_layout.dart';
 
 class CollapsingHeader extends StatelessWidget {
@@ -26,7 +27,7 @@ class CollapsingHeader extends StatelessWidget {
           expandedHeight: 140,
           floating: false,
           pinned: true,
-          backgroundColor: colorScheme.surface,
+          backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           leading: showBackButton
               ? IconButton(
@@ -36,7 +37,7 @@ class CollapsingHeader extends StatelessWidget {
                 )
               : null,
           automaticallyImplyLeading: false,
-          flexibleSpace: LayoutBuilder(
+          flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
             builder: (context, constraints) {
               final expandRatio = _calculateExpandRatio(
                 constraints,
@@ -73,7 +74,7 @@ class CollapsingHeader extends StatelessWidget {
                 ),
               );
             },
-          ),
+          )]),
         ),
 
         if (infoCard != null)

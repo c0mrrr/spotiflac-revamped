@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
@@ -25,14 +26,14 @@ class AppSettingsPage extends ConsumerWidget {
               collapsedHeight: kToolbarHeight,
               floating: false,
               pinned: true,
-              backgroundColor: colorScheme.surface,
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               leading: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.pop(context),
               ),
-              flexibleSpace: LayoutBuilder(
+              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
                 builder: (context, constraints) {
                   final maxHeight = 120 + topPadding;
                   final minHeight = kToolbarHeight + topPadding;
@@ -57,7 +58,7 @@ class AppSettingsPage extends ConsumerWidget {
                     ),
                   );
                 },
-              ),
+              )]),
             ),
 
             SliverToBoxAdapter(
@@ -81,23 +82,6 @@ class AppSettingsPage extends ConsumerWidget {
                         .read(settingsProvider.notifier)
                         .setExtensionVerificationBrowserMode(mode),
                   ),
-                  SettingsSwitchItem(
-                    icon: Icons.system_update,
-                    title: context.l10n.optionsCheckUpdates,
-                    subtitle: context.l10n.optionsCheckUpdatesSubtitle,
-                    value: settings.checkForUpdates,
-                    onChanged: (v) => ref
-                        .read(settingsProvider.notifier)
-                        .setCheckForUpdates(v),
-                    showDivider: settings.checkForUpdates,
-                  ),
-                  if (settings.checkForUpdates)
-                    _UpdateChannelSelector(
-                      currentChannel: settings.updateChannel,
-                      onChanged: (v) => ref
-                          .read(settingsProvider.notifier)
-                          .setUpdateChannel(v),
-                    ),
                 ],
               ),
             ),
@@ -292,93 +276,6 @@ class AppSettingsPage extends ConsumerWidget {
   }
 }
 
-class _UpdateChannelSelector extends StatelessWidget {
-  final String currentChannel;
-  final ValueChanged<String> onChanged;
-  const _UpdateChannelSelector({
-    required this.currentChannel,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.new_releases,
-                color: colorScheme.onSurfaceVariant,
-                size: 24,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      context.l10n.optionsUpdateChannel,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      currentChannel == 'preview'
-                          ? context.l10n.optionsUpdateChannelPreview
-                          : context.l10n.optionsUpdateChannelStable,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _ChannelChip(
-                label: context.l10n.channelStable,
-                isSelected: currentChannel == 'stable',
-                onTap: () => onChanged('stable'),
-              ),
-              const SizedBox(width: 8),
-              _ChannelChip(
-                label: context.l10n.channelPreview,
-                isSelected: currentChannel == 'preview',
-                onTap: () => onChanged('preview'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                size: 16,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  context.l10n.optionsUpdateChannelWarning,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _VerificationBrowserModeSelector extends StatelessWidget {
   final String currentMode;

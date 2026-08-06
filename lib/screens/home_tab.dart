@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as dart_ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -1297,10 +1299,10 @@ class _HomeTabState extends ConsumerState<HomeTab>
                 collapsedHeight: kToolbarHeight,
                 floating: false,
                 pinned: true,
-                backgroundColor: colorScheme.surface,
+                backgroundColor: Colors.transparent,
                 surfaceTintColor: Colors.transparent,
                 automaticallyImplyLeading: false,
-                flexibleSpace: LayoutBuilder(
+                flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
                   builder: (context, constraints) {
                     final maxHeight = 120 + topPadding;
                     final minHeight = kToolbarHeight + topPadding;
@@ -1322,7 +1324,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
                       ),
                     );
                   },
-                ),
+                )]),
               ),
 
               SliverToBoxAdapter(

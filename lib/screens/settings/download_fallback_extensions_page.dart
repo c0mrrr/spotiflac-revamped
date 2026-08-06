@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
@@ -71,7 +72,7 @@ class _DownloadFallbackExtensionsPageState
               collapsedHeight: kToolbarHeight,
               floating: false,
               pinned: true,
-              backgroundColor: colorScheme.surface,
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               leading: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
@@ -94,7 +95,7 @@ class _DownloadFallbackExtensionsPageState
                     child: Text(context.l10n.dialogSave),
                   ),
               ],
-              flexibleSpace: LayoutBuilder(
+              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
                 builder: (context, constraints) {
                   final maxHeight = 120 + topPadding;
                   final minHeight = kToolbarHeight + topPadding;
@@ -119,7 +120,7 @@ class _DownloadFallbackExtensionsPageState
                     ),
                   );
                 },
-              ),
+              )]),
             ),
             SliverToBoxAdapter(
               child: Padding(

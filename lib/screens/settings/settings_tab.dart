@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/constants/app_info.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -10,10 +11,8 @@ import 'package:spotiflac_android/screens/settings/metadata_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/extensions_page.dart';
 import 'package:spotiflac_android/screens/settings/library_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/app_settings_page.dart';
-import 'package:spotiflac_android/screens/settings/about_page.dart';
 import 'package:spotiflac_android/screens/settings/cache_management_page.dart';
 import 'package:spotiflac_android/screens/settings/backup_restore_page.dart';
-import 'package:spotiflac_android/screens/settings/donate_page.dart';
 import 'package:spotiflac_android/screens/settings/log_screen.dart';
 import 'package:spotiflac_android/utils/app_bar_layout.dart';
 import 'package:spotiflac_android/utils/nav_bar_inset.dart';
@@ -36,10 +35,10 @@ class SettingsTab extends ConsumerWidget {
           collapsedHeight: kToolbarHeight,
           floating: false,
           pinned: true,
-          backgroundColor: colorScheme.surface,
+          backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: false,
-          flexibleSpace: LayoutBuilder(
+          flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
             builder: (context, constraints) {
               final maxHeight = 120 + topPadding;
               final minHeight = kToolbarHeight + topPadding;
@@ -61,7 +60,7 @@ class SettingsTab extends ConsumerWidget {
                 ),
               );
             },
-          ),
+          )]),
         ),
 
         SliverToBoxAdapter(
@@ -174,18 +173,6 @@ class SettingsTab extends ConsumerWidget {
                     title: l10n.logTitle,
                     subtitle: l10n.settingsLogsSubtitle,
                     onTap: () => _navigateTo(context, const LogScreen()),
-                  ),
-                  SettingsItem(
-                    icon: Icons.favorite_outline,
-                    title: l10n.settingsDonate,
-                    subtitle: l10n.settingsDonateSubtitle,
-                    onTap: () => _navigateTo(context, const DonatePage()),
-                  ),
-                  SettingsItem(
-                    icon: Icons.info_outline,
-                    title: l10n.settingsAbout,
-                    subtitle: '${l10n.aboutVersion} ${AppInfo.displayVersion}',
-                    onTap: () => _navigateTo(context, const AboutPage()),
                     showDivider: false,
                   ),
                 ],

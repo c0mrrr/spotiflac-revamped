@@ -1,3 +1,4 @@
+
 part of 'home_tab.dart';
 
 /// Dropdown widget for quick search provider switching
@@ -1138,7 +1139,11 @@ class _ExtensionAlbumScreenState extends ConsumerState<ExtensionAlbumScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.albumName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.albumName)),
         body: const AlbumTrackListSkeleton(
           itemCount: 10,
           showCoverHeader: true,
@@ -1148,7 +1153,11 @@ class _ExtensionAlbumScreenState extends ConsumerState<ExtensionAlbumScreen> {
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.albumName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.albumName)),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1308,14 +1317,22 @@ class _ExtensionPlaylistScreenState
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.playlistName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.playlistName)),
         body: const TrackListSkeleton(itemCount: 8, showCoverHeader: true),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.playlistName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.playlistName)),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1490,14 +1507,22 @@ class _ExtensionArtistScreenState extends ConsumerState<ExtensionArtistScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.artistName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.artistName)),
         body: const ArtistScreenSkeleton(),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.artistName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.artistName)),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

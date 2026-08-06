@@ -158,6 +158,12 @@ abstract class AppLocalizations {
   /// **'Repo'**
   String get navStore;
 
+  /// Bottom navigation - Logs tab
+  ///
+  /// In en, this message translates to:
+  /// **'Logs'**
+  String get navLogs;
+
   /// Home screen title
   ///
   /// In en, this message translates to:
@@ -325,6 +331,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Use colors from your wallpaper'**
   String get appearanceDynamicColorSubtitle;
+
+  /// Setting to enable blurry animated artwork background
+  ///
+  /// In en, this message translates to:
+  /// **'Animated Artwork Background'**
+  String get appearanceArtworkBackground;
+
+  /// Subtitle for animated artwork background
+  ///
+  /// In en, this message translates to:
+  /// **'Smoothly animate blurry metadata song image colors'**
+  String get appearanceArtworkBackgroundSubtitle;
 
   /// Layout style for history
   ///
@@ -7422,6 +7440,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open in external player'**
   String get nowPlayingOpenInExternalPlayer;
+
+  /// Menu item to copy plain lyrics to clipboard
+  ///
+  /// In en, this message translates to:
+  /// **'Copy plain lyrics'**
+  String get nowPlayingCopyPlainLyrics;
+
+  /// Menu item to copy line-synced lyrics to clipboard
+  ///
+  /// In en, this message translates to:
+  /// **'Copy time-synced lyrics'**
+  String get nowPlayingCopySyncedLyrics;
+
+  /// Menu item to copy word-synced lyrics to clipboard
+  ///
+  /// In en, this message translates to:
+  /// **'Copy word-synced lyrics'**
+  String get nowPlayingCopyWordSyncedLyrics;
+
+  /// Snackbar message when plain lyrics are copied
+  ///
+  /// In en, this message translates to:
+  /// **'Plain lyrics copied to clipboard'**
+  String get nowPlayingCopiedPlainLyrics;
+
+  /// Snackbar message when time-synced lyrics are copied
+  ///
+  /// In en, this message translates to:
+  /// **'Time-synced lyrics copied to clipboard'**
+  String get nowPlayingCopiedSyncedLyrics;
+
+  /// Snackbar message when word-synced lyrics are copied
+  ///
+  /// In en, this message translates to:
+  /// **'Word-synced lyrics copied to clipboard'**
+  String get nowPlayingCopiedWordSyncedLyrics;
 
   /// Tab label for the player view
   ///

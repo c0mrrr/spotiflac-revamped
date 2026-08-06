@@ -38,6 +38,47 @@ class ParsedLyrics {
 
   bool get isEmpty => lines.isEmpty && plainText.trim().isEmpty;
 
+  String get formattedPlainLyrics {
+    if (plainText.trim().isNotEmpty) return plainText.trim();
+    if (lines.isNotEmpty) {
+      return lines.map((l) => l.text).join('\n');
+    }
+    return '';
+  }
+
+  String get formattedSyncedLyrics {
+    if (lines.isEmpty) return formattedPlainLyrics;
+    return lines.map((l) {
+      final m = l.time.inMinutes.toString().padLeft(2, '0');
+      final s = (l.time.inSeconds % 60).toString().padLeft(2, '0');
+      final cs = ((l.time.inMilliseconds % 1000) ~/ 10).toString().padLeft(2, '0');
+      return '[$m:$s.$cs] ${l.text}';
+    }).join('\n');
+  }
+
+  String get formattedWordSyncedLyrics {
+    if (lines.isEmpty) return formattedPlainLyrics;
+    return lines.map((l) {
+      final m = l.time.inMinutes.toString().padLeft(2, '0');
+      final s = (l.time.inSeconds % 60).toString().padLeft(2, '0');
+      final cs = ((l.time.inMilliseconds % 1000) ~/ 10).toString().padLeft(2, '0');
+      final lineTag = '[$m:$s.$cs]';
+
+      if (l.words.isEmpty) {
+        return '$lineTag ${l.text}';
+      }
+
+      final wordsStr = l.words.map((w) {
+        final wm = w.time.inMinutes.toString().padLeft(2, '0');
+        final ws = (w.time.inSeconds % 60).toString().padLeft(2, '0');
+        final wcs = ((w.time.inMilliseconds % 1000) ~/ 10).toString().padLeft(2, '0');
+        return '<$wm:$ws.$wcs>${w.text}';
+      }).join();
+
+      return '$lineTag $wordsStr';
+    }).join('\n');
+  }
+
   static const ParsedLyrics empty = ParsedLyrics(
     synced: false,
     wordSynced: false,

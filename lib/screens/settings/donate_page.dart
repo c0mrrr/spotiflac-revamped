@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:spotiflac_android/services/app_remote_config_service.dart';
@@ -66,14 +67,14 @@ class _DonatePageState extends State<DonatePage> {
             collapsedHeight: kToolbarHeight,
             floating: false,
             pinned: true,
-            backgroundColor: colorScheme.surface,
+            backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             leading: IconButton(
               tooltip: MaterialLocalizations.of(context).backButtonTooltip,
               icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.pop(context),
             ),
-            flexibleSpace: LayoutBuilder(
+            flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
               builder: (context, constraints) {
                 final maxHeight = 120 + topPadding;
                 final minHeight = kToolbarHeight + topPadding;
@@ -95,7 +96,7 @@ class _DonatePageState extends State<DonatePage> {
                   ),
                 );
               },
-            ),
+            )]),
           ),
           SliverToBoxAdapter(
             child: Padding(

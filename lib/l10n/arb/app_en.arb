@@ -21,6 +21,10 @@
   "@navStore": {
     "description": "Bottom navigation - Extension store tab"
   },
+  "navLogs": "Logs",
+  "@navLogs": {
+    "description": "Bottom navigation - Logs tab"
+  },
   "homeTitle": "Home",
   "@homeTitle": {
     "description": "Home screen title"
@@ -132,6 +136,14 @@
   "appearanceDynamicColorSubtitle": "Use colors from your wallpaper",
   "@appearanceDynamicColorSubtitle": {
     "description": "Subtitle for dynamic color"
+  },
+  "appearanceArtworkBackground": "Animated Artwork Background",
+  "@appearanceArtworkBackground": {
+    "description": "Setting to enable blurry animated artwork background"
+  },
+  "appearanceArtworkBackgroundSubtitle": "Smoothly animate blurry metadata song image colors",
+  "@appearanceArtworkBackgroundSubtitle": {
+    "description": "Subtitle for animated artwork background"
   },
   "appearanceHistoryView": "History View",
   "@appearanceHistoryView": {
@@ -5834,6 +5846,30 @@
   "nowPlayingOpenInExternalPlayer": "Open in external player",
   "@nowPlayingOpenInExternalPlayer": {
     "description": "Menu item to open the current track in an external player"
+  },
+  "nowPlayingCopyPlainLyrics": "Copy plain lyrics",
+  "@nowPlayingCopyPlainLyrics": {
+    "description": "Menu item to copy plain lyrics to clipboard"
+  },
+  "nowPlayingCopySyncedLyrics": "Copy time-synced lyrics",
+  "@nowPlayingCopySyncedLyrics": {
+    "description": "Menu item to copy line-synced lyrics to clipboard"
+  },
+  "nowPlayingCopyWordSyncedLyrics": "Copy word-synced lyrics",
+  "@nowPlayingCopyWordSyncedLyrics": {
+    "description": "Menu item to copy word-synced lyrics to clipboard"
+  },
+  "nowPlayingCopiedPlainLyrics": "Plain lyrics copied to clipboard",
+  "@nowPlayingCopiedPlainLyrics": {
+    "description": "Snackbar message when plain lyrics are copied"
+  },
+  "nowPlayingCopiedSyncedLyrics": "Time-synced lyrics copied to clipboard",
+  "@nowPlayingCopiedSyncedLyrics": {
+    "description": "Snackbar message when time-synced lyrics are copied"
+  },
+  "nowPlayingCopiedWordSyncedLyrics": "Word-synced lyrics copied to clipboard",
+  "@nowPlayingCopiedWordSyncedLyrics": {
+    "description": "Snackbar message when word-synced lyrics are copied"
   },
   "nowPlayingTabPlayer": "Player",
   "@nowPlayingTabPlayer": {

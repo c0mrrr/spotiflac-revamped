@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
@@ -543,7 +544,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
       expandedHeight: expandedHeight,
       pinned: true,
       stretch: true,
-      backgroundColor: pageBackgroundColor,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
@@ -559,7 +560,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      flexibleSpace: LayoutBuilder(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
         builder: (context, constraints) {
           final collapseRatio =
               (constraints.maxHeight - kToolbarHeight) /
@@ -748,7 +749,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.white,
+                                  backgroundColor: Colors.transparent,
                                   foregroundColor: Colors.black87,
                                   disabledBackgroundColor: Colors.white
                                       .withValues(alpha: 0.45),
@@ -773,7 +774,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
             stretchModes: const [StretchMode.zoomBackground],
           );
         },
-      ),
+      )]),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         icon: Container(

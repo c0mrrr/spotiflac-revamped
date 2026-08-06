@@ -1,7 +1,9 @@
+import 'dart:ui' as dart_ui;
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -379,14 +381,22 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
 
     if (tracks.isEmpty && tracksValue.isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.albumName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.albumName)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (tracks.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.albumName)),
+        appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+title: Text(widget.albumName)),
         body: Center(child: Text(context.l10n.noTracksFoundForAlbum)),
       );
     }
@@ -475,7 +485,7 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
       expandedHeight: expandedHeight,
       pinned: true,
       stretch: true,
-      backgroundColor: colorScheme.surface,
+      
       surfaceTintColor: Colors.transparent,
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
@@ -491,7 +501,7 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      flexibleSpace: LayoutBuilder(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
         builder: (context, constraints) {
           final collapseRatio =
               (constraints.maxHeight - kToolbarHeight) /
@@ -649,7 +659,7 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
+                                    
                                     foregroundColor: Colors.black87,
                                     minimumSize: const Size(0, 48),
                                     shape: RoundedRectangleBorder(
@@ -685,7 +695,7 @@ class _DownloadedAlbumScreenState extends ConsumerState<DownloadedAlbumScreen> {
             stretchModes: const [StretchMode.zoomBackground],
           );
         },
-      ),
+      )]),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         icon: Container(

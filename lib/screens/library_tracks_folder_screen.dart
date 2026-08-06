@@ -4,6 +4,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -628,7 +629,7 @@ class _LibraryTracksFolderScreenState
       expandedHeight: expandedHeight,
       pinned: true,
       stretch: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
@@ -685,7 +686,7 @@ class _LibraryTracksFolderScreenState
           ),
         ],
       ],
-      flexibleSpace: LayoutBuilder(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
         builder: (context, constraints) {
           final collapseRatio =
               (constraints.maxHeight - kToolbarHeight) /
@@ -935,7 +936,7 @@ class _LibraryTracksFolderScreenState
             stretchModes: const [StretchMode.zoomBackground],
           );
         },
-      ),
+      )]),
       leading: IconButton(
         tooltip: _isSelectionMode
             ? MaterialLocalizations.of(context).closeButtonTooltip

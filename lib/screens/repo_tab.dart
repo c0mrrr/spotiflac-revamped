@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -90,7 +91,7 @@ class _RepoTabState extends ConsumerState<RepoTab> {
               collapsedHeight: kToolbarHeight,
               floating: false,
               pinned: true,
-              backgroundColor: colorScheme.surface,
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               automaticallyImplyLeading: false,
               actions: [
@@ -101,7 +102,7 @@ class _RepoTabState extends ConsumerState<RepoTab> {
                     onPressed: () => _showChangeRepoDialog(registryUrl),
                   ),
               ],
-              flexibleSpace: LayoutBuilder(
+              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
                 builder: (context, constraints) {
                   final maxHeight = 120 + topPadding;
                   final minHeight = kToolbarHeight + topPadding;
@@ -123,7 +124,7 @@ class _RepoTabState extends ConsumerState<RepoTab> {
                     ),
                   );
                 },
-              ),
+              )]),
             ),
 
             if (!hasRegistryUrl)

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
@@ -16,15 +17,14 @@ import 'package:spotiflac_android/screens/home_tab.dart';
 import 'package:spotiflac_android/screens/repo_tab.dart';
 import 'package:spotiflac_android/screens/queue_tab.dart';
 import 'package:spotiflac_android/screens/settings/settings_tab.dart';
+import 'package:spotiflac_android/screens/logs_tab.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/shell_navigation_service.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/music_player_service.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
 import 'package:spotiflac_android/services/app_remote_config_service.dart';
-import 'package:spotiflac_android/services/update_checker.dart';
 import 'package:spotiflac_android/widgets/app_announcement_dialog.dart';
-import 'package:spotiflac_android/widgets/update_dialog.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 import 'package:spotiflac_android/widgets/mini_player.dart';
@@ -54,10 +54,13 @@ class _MainShellState extends ConsumerState<MainShell>
       ShellNavigationService.libraryTabNavigatorKey;
   final GlobalKey<NavigatorState> _repoTabNavigatorKey =
       ShellNavigationService.repoTabNavigatorKey;
+  final GlobalKey<NavigatorState> _logsTabNavigatorKey =
+      ShellNavigationService.logsTabNavigatorKey;
 
   late final _PreviewStopNavigatorObserver _homePreviewStopObserver;
   late final _PreviewStopNavigatorObserver _libraryPreviewStopObserver;
   late final _PreviewStopNavigatorObserver _repoPreviewStopObserver;
+  late final _PreviewStopNavigatorObserver _logsPreviewStopObserver;
 
   @override
   void didChangeDependencies() {
@@ -82,6 +85,9 @@ class _MainShellState extends ConsumerState<MainShell>
     _repoPreviewStopObserver = _PreviewStopNavigatorObserver(
       () => ref.read(previewPlayerProvider.notifier).stop(),
     );
+    _logsPreviewStopObserver = _PreviewStopNavigatorObserver(
+      () => ref.read(previewPlayerProvider.notifier).stop(),
+    );
     _pageController = PageController(initialPage: _currentIndex);
     _tabJumpTransitionController = AnimationController(
       vsync: this,
@@ -95,10 +101,7 @@ class _MainShellState extends ConsumerState<MainShell>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _setupShareListener();
       _checkSafMigration();
-      final updateDialogShown = await _checkForUpdates();
-      if (!updateDialogShown) {
-        await _checkAppAnnouncement();
-      }
+      await _checkAppAnnouncement();
     });
   }
 
@@ -156,29 +159,7 @@ class _MainShellState extends ConsumerState<MainShell>
     }
   }
 
-  Future<bool> _checkForUpdates() async {
-    if (_hasCheckedUpdate) return false;
-    _hasCheckedUpdate = true;
 
-    final settings = ref.read(settingsProvider);
-    if (!settings.checkForUpdates) return false;
-
-    final updateInfo = await UpdateChecker.checkForUpdate(
-      channel: settings.updateChannel,
-    );
-    if (updateInfo != null && mounted) {
-      showUpdateDialog(
-        context,
-        updateInfo: updateInfo,
-        onDisableUpdates: () {
-          ref.read(settingsProvider.notifier).setCheckForUpdates(false);
-        },
-      );
-      return true;
-    }
-
-    return false;
-  }
 
   Future<void> _checkAppAnnouncement() async {
     if (_hasCheckedAppAnnouncement) return;
@@ -466,11 +447,14 @@ class _MainShellState extends ConsumerState<MainShell>
     if (index == 0) return _homeTabNavigatorKey.currentState;
     if (index == 1) return _libraryTabNavigatorKey.currentState;
     if (showStore && index == 2) return _repoTabNavigatorKey.currentState;
+    if (showStore && index == 3) return _logsTabNavigatorKey.currentState;
+    if (!showStore && index == 2) return _logsTabNavigatorKey.currentState;
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final enableBlur = ref.watch(themeProvider).enableBlur;
     final queueState = ref.watch(
       downloadQueueProvider.select((s) => s.queuedCount),
     );
@@ -505,6 +489,12 @@ class _MainShellState extends ConsumerState<MainShell>
           observers: [_repoPreviewStopObserver],
           child: const RepoTab(),
         ),
+      _TabNavigator(
+        key: const ValueKey('tab-logs'),
+        navigatorKey: _logsTabNavigatorKey,
+        observers: [_logsPreviewStopObserver],
+        child: const LogsTab(),
+      ),
       const SettingsTab(),
     ];
 
@@ -559,6 +549,11 @@ class _MainShellState extends ConsumerState<MainShell>
           label: l10n.navStore,
         ),
       NavigationDestination(
+        icon: const Icon(Icons.terminal_outlined),
+        selectedIcon: const Icon(Icons.terminal),
+        label: l10n.navLogs,
+      ),
+      NavigationDestination(
         icon: const Icon(Icons.settings_outlined),
         selectedIcon: SpinIcon(child: const Icon(Icons.settings)),
         label: l10n.navSettings,
@@ -604,40 +599,68 @@ class _MainShellState extends ConsumerState<MainShell>
             );
           },
         ),
-        bottomNavigationBar: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const MiniPlayer(),
-                DecoratedBox(
-                  position: DecorationPosition.foreground,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+        bottomNavigationBar: enableBlur
+            ? ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const MiniPlayer(),
+                      DecoratedBox(
+                        position: DecorationPosition.foreground,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ),
+                        child: NavigationBar(
+                          selectedIndex: _currentIndex.clamp(0, maxIndex),
+                          onDestinationSelected: _onNavTap,
+                          animationDuration: const Duration(milliseconds: 500),
+                          elevation: 0,
+                          height: 64,
+                          backgroundColor: settingsGroupColor(
+                            context,
+                          ).withValues(alpha: 0.72),
+                          destinations: destinations,
+                        ),
                       ),
-                    ),
-                  ),
-                  child: NavigationBar(
-                    selectedIndex: _currentIndex.clamp(0, maxIndex),
-                    onDestinationSelected: _onNavTap,
-                    animationDuration: const Duration(milliseconds: 500),
-                    elevation: 0,
-                    height: 64,
-                    backgroundColor: settingsGroupColor(
-                      context,
-                    ).withValues(alpha: 0.72),
-                    destinations: destinations,
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const MiniPlayer(),
+                  DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    child: NavigationBar(
+                      selectedIndex: _currentIndex.clamp(0, maxIndex),
+                      onDestinationSelected: _onNavTap,
+                      animationDuration: const Duration(milliseconds: 500),
+                      elevation: 0,
+                      height: 64,
+                      backgroundColor: settingsGroupColor(context),
+                      destinations: destinations,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

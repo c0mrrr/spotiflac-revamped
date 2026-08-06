@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
@@ -285,7 +286,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       expandedHeight: expandedHeight,
       pinned: true,
       stretch: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
@@ -301,7 +302,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      flexibleSpace: LayoutBuilder(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
         builder: (context, constraints) {
           final collapseRatio =
               (constraints.maxHeight - kToolbarHeight) /
@@ -504,7 +505,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             stretchModes: const [StretchMode.zoomBackground],
           );
         },
-      ),
+      )]),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         icon: Container(

@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as dart_ui;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/providers/music_player_provider.dart';
+import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
@@ -143,6 +148,10 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     if (mediaItem == null) {
       return Scaffold(
         appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+
           leading: IconButton(
             icon: const Icon(Icons.keyboard_arrow_down),
             onPressed: () => Navigator.of(context).maybePop(),
@@ -152,83 +161,154 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       );
     }
 
+    final themeSettings = ref.watch(themeProvider);
+    final useArtworkBg = themeSettings.useArtworkBackground;
     final source = mediaItem.extras?['source']?.toString() ?? '';
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
-        title: Text(context.l10n.nowPlayingTitle),
-        centerTitle: true,
-        leading: IconButton(
-          tooltip: context.l10n.nowPlayingMinimize,
-          icon: const Icon(Icons.keyboard_arrow_down),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.nowPlayingUpNext,
-            icon: const Icon(Icons.queue_music),
-            onPressed: () => _showQueueSheet(colorScheme),
+    Widget body = SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              children: [
+                _playerPage(mediaItem, controller, colorScheme),
+                _lyricsSection(colorScheme),
+              ],
+            ),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'details':
-                  _showDetailsSheet(colorScheme);
-                  break;
-                case 'external':
-                  _openExternally(source);
-                  break;
-              }
-            },
-            itemBuilder: (menuContext) => [
-              PopupMenuItem(
-                value: 'details',
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: Text(menuContext.l10n.nowPlayingDetails),
-                  contentPadding: EdgeInsets.zero,
-                ),
+          _PageTabBar(
+            controller: _pageController,
+            colorScheme: colorScheme,
+            labels: [
+              context.l10n.nowPlayingTabPlayer,
+              context.l10n.nowPlayingTabLyrics,
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (useArtworkBg)
+          _AnimatedArtworkBackground(artUri: mediaItem.artUri?.toString()),
+        Scaffold(
+          backgroundColor: useArtworkBg ? Colors.transparent : colorScheme.surface,
+          appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+
+            
+            surfaceTintColor: Colors.transparent,
+            title: Text(context.l10n.nowPlayingTitle),
+            centerTitle: true,
+            leading: IconButton(
+              tooltip: context.l10n.nowPlayingMinimize,
+              icon: const Icon(Icons.keyboard_arrow_down),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            actions: [
+              IconButton(
+                tooltip: context.l10n.nowPlayingUpNext,
+                icon: const Icon(Icons.queue_music),
+                onPressed: () => _showQueueSheet(colorScheme),
               ),
-              PopupMenuItem(
-                value: 'external',
-                child: ListTile(
-                  leading: const Icon(Icons.open_in_new),
-                  title: Text(menuContext.l10n.nowPlayingOpenInExternalPlayer),
-                  contentPadding: EdgeInsets.zero,
-                ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'details':
+                      _showDetailsSheet(colorScheme);
+                      break;
+                    case 'refetch_lyrics':
+                      _showRefetchLyricsDialog(context, mediaItem);
+                      break;
+                    case 'external':
+                      _openExternally(source);
+                      break;
+                    case 'copy_plain':
+                      _copyLyricsToClipboard(
+                        _lyrics.formattedPlainLyrics,
+                        context.l10n.nowPlayingCopiedPlainLyrics,
+                      );
+                      break;
+                    case 'copy_synced':
+                      _copyLyricsToClipboard(
+                        _lyrics.formattedSyncedLyrics,
+                        context.l10n.nowPlayingCopiedSyncedLyrics,
+                      );
+                      break;
+                    case 'copy_word_synced':
+                      _copyLyricsToClipboard(
+                        _lyrics.formattedWordSyncedLyrics,
+                        context.l10n.nowPlayingCopiedWordSyncedLyrics,
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (menuContext) => [
+                  PopupMenuItem(
+                    value: 'details',
+                    child: ListTile(
+                      leading: const Icon(Icons.info_outline),
+                      title: Text(menuContext.l10n.nowPlayingDetails),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'refetch_lyrics',
+                    child: ListTile(
+                      leading: const Icon(Icons.sync),
+                      title: const Text('Re-fetch Lyrics'), // using plain text since translation string is not requested
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'external',
+                    child: ListTile(
+                      leading: const Icon(Icons.open_in_new),
+                      title: Text(menuContext.l10n.nowPlayingOpenInExternalPlayer),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  if (!_lyrics.isEmpty && _lyrics.formattedPlainLyrics.trim().isNotEmpty)
+                    PopupMenuItem(
+                      value: 'copy_plain',
+                      child: ListTile(
+                        leading: const Icon(Icons.copy_outlined),
+                        title: Text(menuContext.l10n.nowPlayingCopyPlainLyrics),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  if (!_lyrics.isEmpty && _lyrics.synced)
+                    PopupMenuItem(
+                      value: 'copy_synced',
+                      child: ListTile(
+                        leading: const Icon(Icons.timer_outlined),
+                        title: Text(menuContext.l10n.nowPlayingCopySyncedLyrics),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  if (!_lyrics.isEmpty && _lyrics.wordSynced)
+                    PopupMenuItem(
+                      value: 'copy_word_synced',
+                      child: ListTile(
+                        leading: const Icon(Icons.short_text_outlined),
+                        title: Text(menuContext.l10n.nowPlayingCopyWordSyncedLyrics),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                children: [
-                  _playerPage(mediaItem, controller, colorScheme),
-                  _lyricsSection(colorScheme),
-                ],
-              ),
-            ),
-            _PageTabBar(
-              controller: _pageController,
-              colorScheme: colorScheme,
-              labels: [
-                context.l10n.nowPlayingTabPlayer,
-                context.l10n.nowPlayingTabLyrics,
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
+          body: body,
         ),
-      ),
+      ],
     );
   }
 
@@ -449,11 +529,116 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     try {
       await openFile(source);
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(context.l10n.snackbarCannotOpenFile(e.toString()))));
     }
+  }
+
+  Future<void> _showRefetchLyricsDialog(BuildContext context, MediaItem mediaItem) async {
+    final providers = await PlatformBridge.getAvailableLyricsProviders();
+    if (!context.mounted) return;
+
+    final selectedProviderId = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Refetch Lyrics'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: providers.length,
+              itemBuilder: (context, index) {
+                final provider = providers[index];
+                return ListTile(
+                  title: Text(provider['name']?.toString() ?? provider['id']?.toString() ?? 'Unknown'),
+                  subtitle: Text(provider['description']?.toString() ?? ''),
+                  onTap: () {
+                    Navigator.of(context).pop(provider['id'] as String?);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selectedProviderId == null || !context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final oldProviders = await PlatformBridge.getLyricsProviders();
+      await PlatformBridge.setLyricsProviders([selectedProviderId]);
+      try {
+        final result = await PlatformBridge.getLyricsLRCWithSource(
+          mediaItem.extras?['spotify_id']?.toString() ?? '',
+          mediaItem.title,
+          mediaItem.artist ?? '',
+          durationMs: mediaItem.duration?.inMilliseconds ?? 0,
+        );
+        if (result['lyrics'] != null && result['lyrics'].toString().isNotEmpty) {
+          final filePath = mediaItem.extras?['file_path']?.toString() ?? '';
+          if (filePath.isNotEmpty) {
+            await PlatformBridge.embedLyricsToFile(filePath, result['lyrics'].toString());
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Lyrics saved to file')),
+              );
+              _loadMetadataForItem(mediaItem);
+            }
+          } else {
+             if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cannot embed: Not a local file')),
+                );
+             }
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No lyrics found from this provider')),
+            );
+          }
+        }
+      } finally {
+        await PlatformBridge.setLyricsProviders(oldProviders);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching lyrics: $e')),
+        );
+      }
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // dismiss loading dialog
+      }
+    }
+  }
+
+  void _copyLyricsToClipboard(String text, String message) {
+    if (text.trim().isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   Future<void> _shuffleLibrary(MusicPlayerController controller) async {
@@ -689,15 +874,31 @@ class _SyncedLyricsView extends ConsumerStatefulWidget {
 
 class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
   final ScrollController _scroll = ScrollController();
+  StreamSubscription<Duration>? _positionSub;
+  Duration _currentPosition = Duration.zero;
   int _active = -1;
   bool _userScrolling = false;
   static const double _estimatedLyricExtent = 64;
 
   @override
+  void initState() {
+    super.initState();
+    _positionSub = AudioService.position.listen((pos) {
+      if (mounted && _currentPosition != pos) {
+        setState(() {
+          _currentPosition = pos;
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _positionSub?.cancel();
     _scroll.dispose();
     super.dispose();
   }
+
 
   void _maybeAutoScroll(int index) {
     if (_userScrolling || index < 0 || !_scroll.hasClients) return;
@@ -712,17 +913,15 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
     );
     _scroll.animateTo(
       clamped.toDouble(),
-      duration: const Duration(milliseconds: 380),
+      duration: const Duration(milliseconds: 600),
       curve: Curves.easeOutCubic,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final position =
-        ref.watch(playbackStateProvider).value?.position ?? Duration.zero;
     final lines = widget.lyrics.lines;
-    final active = LyricsParser.activeIndex(lines, position);
+    final active = LyricsParser.activeIndex(lines, _currentPosition);
 
     if (active != _active) {
       _active = active;
@@ -753,8 +952,8 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
           final color = isActive
               ? widget.colorScheme.onSurface
               : isPast
-              ? widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-              : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.8);
+              ? widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+              : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
 
           final text = line.text.trim().isEmpty
               ? '\u00b7\u00b7\u00b7'
@@ -762,38 +961,38 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
 
           Widget content;
           if (isActive && line.hasWordTiming) {
-            content = _wordHighlightedLine(line, position);
+            content = _wordHighlightedLine(line, _currentPosition);
           } else {
             content = Text(
               text,
               textAlign: TextAlign.center,
               style:
                   (isActive
-                          ? Theme.of(context).textTheme.headlineSmall
-                          : Theme.of(context).textTheme.titleLarge)
+                          ? Theme.of(context).textTheme.headlineMedium
+                          : Theme.of(context).textTheme.headlineSmall)
                       ?.copyWith(
                         height: 1.4,
                         fontWeight: isActive
-                            ? FontWeight.bold
-                            : FontWeight.w500,
+                            ? FontWeight.w800
+                            : FontWeight.w600,
                         color: color,
                       ),
             );
           }
 
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: GestureDetector(
               onTap: () =>
                   ref.read(musicPlayerControllerProvider).seek(line.time),
               child: AnimatedScale(
-                scale: isActive ? 1.0 : 0.96,
+                scale: isActive ? 1.05 : 1.0,
                 alignment: Alignment.center,
-                duration: const Duration(milliseconds: 280),
+                duration: const Duration(milliseconds: 400),
                 curve: Curves.easeOutCubic,
                 child: AnimatedOpacity(
-                  opacity: isActive ? 1.0 : (isPast ? 0.55 : 0.85),
-                  duration: const Duration(milliseconds: 280),
+                  opacity: isActive ? 1.0 : (isPast ? 0.6 : 0.8),
+                  duration: const Duration(milliseconds: 400),
                   child: content,
                 ),
               ),
@@ -805,29 +1004,55 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
   }
 
   Widget _wordHighlightedLine(LyricLine line, Duration position) {
-    final spans = <TextSpan>[];
-    for (final word in line.words) {
-      final sung = position >= word.time;
-      spans.add(
-        TextSpan(
-          text: word.text,
-          style: TextStyle(
-            color: sung
-                ? widget.colorScheme.onSurface
-                : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+    final words = <Widget>[];
+    for (int i = 0; i < line.words.length; i++) {
+      final word = line.words[i];
+      final nextTime = i + 1 < line.words.length
+          ? line.words[i + 1].time
+          : (line.end ?? line.time + const Duration(milliseconds: 800));
+
+      final wordMs = word.time.inMilliseconds;
+      final nextMs = nextTime.inMilliseconds;
+      final posMs = position.inMilliseconds;
+
+      double progress = 0.0;
+      if (posMs >= wordMs) {
+        if (posMs >= nextMs) {
+          progress = 1.0;
+        } else {
+          progress = (posMs - wordMs) / (nextMs - wordMs);
+        }
+      }
+
+      final isActiveWord = progress > 0.0 && progress < 1.0;
+      final isPastWord = progress >= 1.0;
+
+      final color = isActiveWord
+          ? widget.colorScheme.onSurface
+          : isPastWord
+              ? widget.colorScheme.onSurface.withValues(alpha: 0.8)
+              : widget.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+
+      words.add(
+        AnimatedScale(
+          scale: isActiveWord ? 1.08 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
+            style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                  height: 1.4,
+                  fontWeight: isActiveWord ? FontWeight.w900 : FontWeight.w800,
+                  color: color,
+                ),
+            child: Text(word.text + (i == line.words.length - 1 ? '' : ' ')),
           ),
         ),
       );
     }
-    return RichText(
-      textAlign: TextAlign.center,
-      text: TextSpan(
-        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-          height: 1.4,
-          fontWeight: FontWeight.bold,
-        ),
-        children: spans,
-      ),
+    return Wrap(
+      alignment: WrapAlignment.center,
+      children: words,
     );
   }
 }
@@ -1130,5 +1355,153 @@ class _Artwork extends StatelessWidget {
       );
     }
     return placeholder;
+  }
+}
+
+class _AnimatedArtworkBackground extends ConsumerStatefulWidget {
+  final String? artUri;
+
+  const _AnimatedArtworkBackground({this.artUri});
+
+  @override
+  ConsumerState<_AnimatedArtworkBackground> createState() => _AnimatedArtworkBackgroundState();
+}
+
+class _AnimatedArtworkBackgroundState extends ConsumerState<_AnimatedArtworkBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  ColorScheme? _extractedScheme;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat(reverse: true);
+    _extractColors();
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedArtworkBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.artUri != oldWidget.artUri) {
+      _extractColors();
+    }
+  }
+
+  Future<void> _extractColors() async {
+    if (widget.artUri == null || widget.artUri!.isEmpty) {
+      if (mounted) setState(() => _extractedScheme = null);
+      return;
+    }
+    ImageProvider provider;
+    if (widget.artUri!.startsWith('http')) {
+      provider = CachedNetworkImageProvider(widget.artUri!);
+    } else if (widget.artUri!.startsWith('file://')) {
+      provider = FileImage(File(Uri.parse(widget.artUri!).toFilePath()));
+    } else {
+      provider = FileImage(File(widget.artUri!));
+    }
+    try {
+      final scheme = await ColorScheme.fromImageProvider(provider: provider);
+      if (mounted) setState(() => _extractedScheme = scheme);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.artUri == null || widget.artUri!.isEmpty) {
+      return const SizedBox.expand();
+    }
+
+    final speed = ref.watch(themeProvider).artworkAnimationSpeed;
+    if (_controller.duration != null && speed > 0) {
+      final newDuration = Duration(milliseconds: (20000 / speed).round());
+      if (_controller.duration != newDuration) {
+        _controller.duration = newDuration;
+        if (_controller.isAnimating) {
+          _controller.repeat(reverse: true);
+        }
+      }
+    }
+
+    final scheme = _extractedScheme ?? Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final c1 = scheme.primary.withValues(alpha: isDark ? 0.45 : 0.35);
+    final c2 = scheme.tertiary.withValues(alpha: isDark ? 0.45 : 0.35);
+    final c3 = scheme.secondary.withValues(alpha: isDark ? 0.4 : 0.3);
+
+    return Positioned.fill(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final val = _controller.value;
+          
+          final x1 = math.sin(val * math.pi * 2) * 120;
+          final y1 = math.cos(val * math.pi * 2) * 120;
+          
+          final x2 = math.cos((val + 0.33) * math.pi * 2) * 140;
+          final y2 = math.sin((val + 0.33) * math.pi * 2) * 140;
+          
+          final x3 = math.sin((val + 0.66) * math.pi * 2) * -100;
+          final y3 = math.cos((val + 0.66) * math.pi * 2) * -100;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(color: Theme.of(context).scaffoldBackgroundColor),
+              Positioned(
+                top: -100 + y1,
+                left: -100 + x1,
+                child: _Blob(color: c1, size: 400),
+              ),
+              Positioned(
+                bottom: -50 + y2,
+                right: -50 + x2,
+                child: _Blob(color: c2, size: 500),
+              ),
+              Positioned(
+                top: 200 + y3,
+                right: 50 + x3,
+                child: _Blob(color: c3, size: 450),
+              ),
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: dart_ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Blob extends StatelessWidget {
+  final Color color;
+  final double size;
+
+  const _Blob({required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+      ),
+    );
   }
 }

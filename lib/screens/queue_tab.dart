@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -50,6 +51,40 @@ import 'package:spotiflac_android/widgets/animation_utils.dart';
 
 part 'queue_tab_helpers.dart';
 part 'queue_tab_widgets.dart';
+
+final librarySizeProvider = FutureProvider.autoDispose<int>((ref) async {
+  final settings = ref.watch(settingsProvider);
+  final isSaf = settings.storageMode == 'saf';
+
+  if (isSaf) {
+    if (settings.downloadTreeUri.isEmpty) return 0;
+    try {
+      return await PlatformBridge.getSafTreeSize(settings.downloadTreeUri);
+    } catch (_) {
+      return 0;
+    }
+  } else {
+    final activeDir = settings.downloadDirectory;
+    if (activeDir.isEmpty) return 0;
+    
+    return await compute((String path) {
+      int totalSize = 0;
+      final dir = Directory(path);
+      if (dir.existsSync()) {
+        try {
+          for (final entity in dir.listSync(recursive: true, followLinks: false)) {
+            if (entity is File) {
+              try {
+                totalSize += entity.lengthSync();
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+      return totalSize;
+    }, activeDir);
+  }
+});
 
 String _formatDownloadSizeMB(num bytes) {
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
@@ -2982,10 +3017,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   collapsedHeight: kToolbarHeight,
                   floating: false,
                   pinned: true,
-                  backgroundColor: colorScheme.surface,
+                  backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
                   automaticallyImplyLeading: false,
-                  flexibleSpace: LayoutBuilder(
+                  flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), LayoutBuilder(
                     builder: (context, constraints) {
                       final maxHeight = 120 + topPadding;
                       final minHeight = kToolbarHeight + topPadding;
@@ -3010,7 +3045,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                         ),
                       );
                     },
-                  ),
+                  )]),
                 ),
 
                 if (shouldShowLibraryControls || hasQueueItems)
@@ -4727,6 +4762,14 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                     filteredGroupedLocalAlbums.isNotEmpty)))
           SliverToBoxAdapter(
             child: SizedBox(height: _isSelectionMode ? 100 : 16),
+          ),
+        if (totalTrackCount > 0 || (totalAlbumCount ?? 0) > 0)
+          SliverToBoxAdapter(
+            child: _LibrarySizeFooter(
+              totalSongs: filterMode == 'albums'
+                  ? (totalAlbumCount ?? 0)
+                  : totalTrackCount,
+            ),
           ),
         SliverToBoxAdapter(child: SizedBox(height: bottomInset)),
       ],

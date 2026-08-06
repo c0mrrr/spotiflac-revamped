@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -1183,7 +1184,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       expandedHeight: hasDiscography ? 420 : 380,
       pinned: true,
       stretch: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       title: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
@@ -1199,7 +1200,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      flexibleSpace: FlexibleSpaceBar(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), FlexibleSpaceBar(
         collapseMode: CollapseMode.none,
         background: Stack(
           fit: StackFit.expand,
@@ -1384,7 +1385,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           StretchMode.zoomBackground,
           StretchMode.blurBackground,
         ],
-      ),
+      )]),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         icon: Container(

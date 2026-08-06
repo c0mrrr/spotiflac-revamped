@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
@@ -87,9 +88,9 @@ class _ExtensionDetailsScreenState
       expandedHeight: 200,
       pinned: true,
       stretch: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      flexibleSpace: FlexibleSpaceBar(
+      flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), FlexibleSpaceBar(
         background: Center(
           child: Padding(
             padding: const EdgeInsets.only(top: kToolbarHeight),
@@ -121,7 +122,7 @@ class _ExtensionDetailsScreenState
             ),
           ),
         ),
-      ),
+      )]),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         icon: const Icon(Icons.arrow_back),

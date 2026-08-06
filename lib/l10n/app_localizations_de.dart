@@ -24,6 +24,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get navStore => 'Repo';
 
   @override
+  String get navLogs => 'Logs';
+
+  @override
   String get homeTitle => 'Startseite';
 
   @override
@@ -111,6 +114,13 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get appearanceDynamicColorSubtitle =>
       'Farben deines Hintergrundbilds verwenden';
+
+  @override
+  String get appearanceArtworkBackground => 'Animated Artwork Background';
+
+  @override
+  String get appearanceArtworkBackgroundSubtitle =>
+      'Smoothly animate blurry metadata song image colors';
 
   @override
   String get appearanceHistoryView => 'Verlaufsansicht';
@@ -4544,6 +4554,26 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get nowPlayingOpenInExternalPlayer => 'Open in external player';
+
+  @override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
+  String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
+
+  @override
+  String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
+
+  @override
+  String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedSyncedLyrics =>
+      'Time-synced lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedWordSyncedLyrics =>
+      'Word-synced lyrics copied to clipboard';
 
   @override
   String get nowPlayingTabPlayer => 'Player';

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/l10n/supported_locales.dart';
@@ -27,17 +28,17 @@ class AppearanceSettingsPage extends ConsumerWidget {
               collapsedHeight: kToolbarHeight,
               floating: false,
               pinned: true,
-              backgroundColor: colorScheme.surface,
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               leading: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.pop(context),
               ),
-              flexibleSpace: _AppBarTitle(
+              flexibleSpace: Stack(fit: StackFit.expand, children: [const FrostedGlassBackground(), _AppBarTitle(
                 title: context.l10n.appearanceTitle,
                 topPadding: topPadding,
-              ),
+              )]),
             ),
 
             SliverToBoxAdapter(
@@ -65,6 +66,50 @@ class AppearanceSettingsPage extends ConsumerWidget {
                     onChanged: (value) => ref
                         .read(themeProvider.notifier)
                         .setUseDynamicColor(value),
+                    showDivider: true,
+                  ),
+                  SettingsSwitchItem(
+                    icon: Icons.lens_blur,
+                    title: context.l10n.appearanceArtworkBackground,
+                    subtitle: context.l10n.appearanceArtworkBackgroundSubtitle,
+                    value: themeSettings.useArtworkBackground,
+                    onChanged: (value) => ref
+                        .read(themeProvider.notifier)
+                        .setUseArtworkBackground(value),
+                    showDivider: !themeSettings.useArtworkBackground,
+                  ),
+                  if (themeSettings.useArtworkBackground)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Background Animation Speed (${themeSettings.artworkAnimationSpeed.toStringAsFixed(1)}x)",
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          Slider(
+                            value: themeSettings.artworkAnimationSpeed,
+                            min: 0.1,
+                            max: 3.0,
+                            divisions: 29,
+                            onChanged: (value) => ref
+                                .read(themeProvider.notifier)
+                                .setArtworkAnimationSpeed(value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (themeSettings.useArtworkBackground)
+                    const Divider(height: 1),
+                  SettingsSwitchItem(
+                    icon: Icons.blur_on,
+                    title: "Enable Frosted Glass",
+                    subtitle: "Uses blurred transparent app bars instead of Material You solid colors",
+                    value: themeSettings.enableBlur,
+                    onChanged: (value) => ref
+                        .read(themeProvider.notifier)
+                        .setEnableBlur(value),
                     showDivider: false,
                   ),
                 ],

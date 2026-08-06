@@ -1,4 +1,6 @@
+import 'dart:ui' as dart_ui;
 import 'package:flutter/material.dart';
+import 'package:spotiflac_android/widgets/frosted_glass_background.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
@@ -59,6 +61,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
+flexibleSpace: const FrostedGlassBackground(),
+backgroundColor: Colors.transparent,
+elevation: 0,
+
         title: TextField(
           controller: _searchController,
           style: TextStyle(color: colorScheme.onSurface),

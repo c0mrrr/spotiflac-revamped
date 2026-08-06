@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/providers/music_player_provider.dart';
+import 'package:spotiflac_android/providers/theme_provider.dart';
 import 'package:spotiflac_android/screens/now_playing_screen.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
@@ -35,7 +36,9 @@ class MiniPlayer extends ConsumerWidget {
         ),
       ),
       child: Material(
-        color: settingsGroupColor(context).withValues(alpha: 0.72),
+        color: ref.watch(themeProvider).enableBlur 
+            ? settingsGroupColor(context).withValues(alpha: 0.72)
+            : settingsGroupColor(context),
         child: InkWell(
         onTap: () {
           Navigator.of(context, rootNavigator: true).push(

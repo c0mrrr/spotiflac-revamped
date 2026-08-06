@@ -24,6 +24,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navStore => 'Repo';
 
   @override
+  String get navLogs => 'Logs';
+
+  @override
   String get homeTitle => 'Home';
 
   @override
@@ -107,6 +110,13 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get appearanceDynamicColorSubtitle => '배경 화면을 참고하여 강조 색상이 지정됩니다';
+
+  @override
+  String get appearanceArtworkBackground => 'Animated Artwork Background';
+
+  @override
+  String get appearanceArtworkBackgroundSubtitle =>
+      'Smoothly animate blurry metadata song image colors';
 
   @override
   String get appearanceHistoryView => '기록 정렬 방식';
@@ -4480,6 +4490,26 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nowPlayingOpenInExternalPlayer => 'Open in external player';
+
+  @override
+  String get nowPlayingCopyPlainLyrics => 'Copy plain lyrics';
+
+  @override
+  String get nowPlayingCopySyncedLyrics => 'Copy time-synced lyrics';
+
+  @override
+  String get nowPlayingCopyWordSyncedLyrics => 'Copy word-synced lyrics';
+
+  @override
+  String get nowPlayingCopiedPlainLyrics => 'Plain lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedSyncedLyrics =>
+      'Time-synced lyrics copied to clipboard';
+
+  @override
+  String get nowPlayingCopiedWordSyncedLyrics =>
+      'Word-synced lyrics copied to clipboard';
 
   @override
   String get nowPlayingTabPlayer => 'Player';

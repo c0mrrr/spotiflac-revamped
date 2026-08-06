@@ -630,6 +630,11 @@ class PlatformBridge {
     return result as bool;
   }
 
+  static Future<int> getSafTreeSize(String uri) async {
+    final result = await _channel.invokeMethod('safTreeSize', {'uri': uri});
+    return (result as num?)?.toInt() ?? 0;
+  }
+
   static Future<String?> createSafFileFromPath({
     required String treeUri,
     required String relativeDir,
