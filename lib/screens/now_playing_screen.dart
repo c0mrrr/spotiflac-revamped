@@ -872,22 +872,42 @@ class _SyncedLyricsView extends ConsumerStatefulWidget {
   ConsumerState<_SyncedLyricsView> createState() => _SyncedLyricsViewState();
 }
 
-class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
+class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scroll = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
   final ValueNotifier<Duration> _posNotifier = ValueNotifier(Duration.zero);
-  StreamSubscription<Duration>? _positionSub;
+  late final Ticker _ticker;
   int _active = -1;
   bool _userScrolling = false;
   Timer? _userScrollTimer;
 
+  Duration? _overridePos;
+  DateTime? _overrideTime;
+
   @override
   void initState() {
     super.initState();
-    _positionSub = AudioService.position.listen((pos) {
+    _ticker = createTicker((_) {
       if (!mounted) return;
-      _posNotifier.value = pos;
-      final newActive = LyricsParser.activeIndex(widget.lyrics.lines, pos);
+
+      Duration currentPos;
+      if (_overridePos != null && _overrideTime != null) {
+        final elapsedSinceOverride = DateTime.now().difference(_overrideTime!);
+        if (elapsedSinceOverride < const Duration(milliseconds: 1500)) {
+          final speed = AudioService.playbackState.speed;
+          currentPos = _overridePos! + (elapsedSinceOverride * (speed > 0 ? speed : 1.0));
+        } else {
+          _overridePos = null;
+          _overrideTime = null;
+          currentPos = _getExtrapolatedPosition();
+        }
+      } else {
+        currentPos = _getExtrapolatedPosition();
+      }
+
+      _posNotifier.value = currentPos;
+      final newActive = LyricsParser.activeIndex(widget.lyrics.lines, currentPos);
       if (newActive != _active) {
         setState(() {
           _active = newActive;
@@ -897,11 +917,37 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
         });
       }
     });
+    _ticker.start();
+  }
+
+  Duration _getExtrapolatedPosition() {
+    final playback = AudioService.playbackState;
+    if (playback.playing) {
+      final passed = DateTime.now().difference(playback.updateTime);
+      return playback.position + (passed * playback.speed);
+    }
+    return playback.position;
+  }
+
+  void _onLineTap(LyricLine line) {
+    _overridePos = line.time;
+    _overrideTime = DateTime.now();
+    _posNotifier.value = line.time;
+    final newActive = LyricsParser.activeIndex(widget.lyrics.lines, line.time);
+    if (newActive != _active) {
+      setState(() {
+        _active = newActive;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeAutoScroll(newActive);
+      });
+    }
+    ref.read(musicPlayerControllerProvider).seek(line.time);
   }
 
   @override
   void dispose() {
-    _positionSub?.cancel();
+    _ticker.dispose();
     _userScrollTimer?.cancel();
     _posNotifier.dispose();
     _scroll.dispose();
@@ -1054,8 +1100,7 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () =>
-                      ref.read(musicPlayerControllerProvider).seek(line.time),
+                  onTap: () => _onLineTap(line),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: AnimatedOpacity(
@@ -1136,27 +1181,22 @@ class _SyncedLyricsViewState extends ConsumerState<_SyncedLyricsView> {
           ),
         );
       } else {
-        // Smoothly filling word via ShaderMask
+        // Smoothly filling word via Stack + ClipRect (Impeller & Metal optimized, 0 offscreen target allocations)
         words.add(
-          ShaderMask(
-            shaderCallback: (bounds) {
-              final p1 = (progress - 0.08).clamp(0.0, 1.0);
-              final p2 = (progress + 0.08).clamp(0.0, 1.0);
-              return LinearGradient(
-                colors: [
-                  activeColor,
-                  activeColor,
-                  inactiveColor,
-                  inactiveColor,
-                ],
-                stops: [0.0, p1, p2, 1.0],
-              ).createShader(bounds);
-            },
-            blendMode: BlendMode.srcIn,
-            child: Text(
-              wordText,
-              style: baseStyle.copyWith(color: Colors.white),
-            ),
+          Stack(
+            children: [
+              Text(
+                wordText,
+                style: baseStyle.copyWith(color: inactiveColor),
+              ),
+              ClipRect(
+                clipper: _WordProgressClipper(progress),
+                child: Text(
+                  wordText,
+                  style: baseStyle.copyWith(color: activeColor),
+                ),
+              ),
+            ],
           ),
         );
       }
@@ -1618,3 +1658,20 @@ class _Blob extends StatelessWidget {
     );
   }
 }
+
+class _WordProgressClipper extends CustomClipper<Rect> {
+  final double progress;
+
+  _WordProgressClipper(this.progress);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTWH(0, 0, size.width * progress, size.height);
+  }
+
+  @override
+  bool shouldReclip(covariant _WordProgressClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
