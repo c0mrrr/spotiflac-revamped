@@ -7,7 +7,6 @@ import 'package:spotiflac_android/screens/settings/app_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/appearance_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/backup_restore_page.dart';
 import 'package:spotiflac_android/screens/settings/cache_management_page.dart';
-import 'package:spotiflac_android/screens/settings/donate_page.dart';
 import 'package:spotiflac_android/screens/settings/download_settings_page.dart';
 import 'package:spotiflac_android/screens/settings/extensions_page.dart';
 import 'package:spotiflac_android/screens/settings/files_settings_page.dart';
@@ -95,17 +94,6 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
 
     final searchCatalog = SettingsSearchCatalog(l10n);
     final groups = [
-      _Group(
-        destinations: [
-          _Destination(
-            icon: Icons.favorite_outline,
-            title: l10n.settingsDonate,
-            subtitle: l10n.settingsDonateSubtitle,
-            keywords: const ['support', 'ko-fi', 'sponsor'],
-            pageBuilder: () => const DonatePage(),
-          ),
-        ],
-      ),
       _Group(
         destinations: [
           _Destination(

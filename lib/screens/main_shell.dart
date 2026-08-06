@@ -23,9 +23,9 @@ import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/music_player_service.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
 import 'package:spotiflac_android/services/app_remote_config_service.dart';
-import 'package:spotiflac_android/services/update_checker.dart';
+import 'package:spotiflac_android/providers/theme_provider.dart';
+import 'package:spotiflac_android/screens/downloads_tab.dart';
 import 'package:spotiflac_android/widgets/app_announcement_dialog.dart';
-import 'package:spotiflac_android/widgets/update_dialog.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
 import 'package:spotiflac_android/widgets/settings_group.dart';
 import 'package:spotiflac_android/widgets/mini_player.dart';
@@ -49,7 +49,6 @@ class _MainShellState extends ConsumerState<MainShell>
   final GlobalKey _pageViewKey = GlobalKey();
   late final PageController _pageController;
   late final AnimationController _tabJumpTransitionController;
-  bool _hasCheckedUpdate = false;
   bool _hasCheckedAppAnnouncement = false;
   bool _initialSafRepairComplete = false;
   bool _safRepairDialogVisible = false;
@@ -123,10 +122,7 @@ class _MainShellState extends ConsumerState<MainShell>
       unawaited(restorePersistedPlaybackSession());
       _setupShareListener();
       await _checkSafMigration();
-      final updateDialogShown = await _checkForUpdates();
-      if (!updateDialogShown) {
-        await _checkAppAnnouncement();
-      }
+      await _checkAppAnnouncement();
     });
   }
 
@@ -316,35 +312,6 @@ class _MainShellState extends ConsumerState<MainShell>
         ),
       );
     }
-  }
-
-  Future<bool> _checkForUpdates() async {
-    if (_hasCheckedUpdate) return false;
-    _hasCheckedUpdate = true;
-
-    final settings = ref.read(settingsProvider);
-
-    // The check runs even when the user disabled update prompts: versions
-    // that fall forceUpdateThreshold stable releases behind must update, and
-    // that enforcement cannot be opted out of.
-    final updateInfo = await UpdateChecker.checkForUpdate(
-      channel: settings.updateChannel,
-    );
-    if (updateInfo == null || !mounted) return false;
-
-    final forced =
-        updateInfo.releasesBehind >= UpdateChecker.forceUpdateThreshold;
-    if (!forced && !settings.checkForUpdates) return false;
-
-    showUpdateDialog(
-      context,
-      updateInfo: updateInfo,
-      forced: forced,
-      onDisableUpdates: () {
-        ref.read(settingsProvider.notifier).setCheckForUpdates(false);
-      },
-    );
-    return true;
   }
 
   Future<void> _checkAppAnnouncement() async {
@@ -703,6 +670,7 @@ class _MainShellState extends ConsumerState<MainShell>
           heroAnimationsEnabled: heroAnimationsEnabled,
           child: const RepoTab(),
         ),
+      const DownloadsTab(),
       const SettingsTab(),
     ];
 
@@ -756,6 +724,27 @@ class _MainShellState extends ConsumerState<MainShell>
           ),
           label: l10n.navStore,
         ),
+      NavigationDestination(
+        icon: AnimatedBadge(
+          count: queueState,
+          child: Badge(
+            isLabelVisible: queueState > 0,
+            label: Text('$queueState'),
+            child: const Icon(Icons.download_outlined),
+          ),
+        ),
+        selectedIcon: BouncingIcon(
+          child: AnimatedBadge(
+            count: queueState,
+            child: Badge(
+              isLabelVisible: queueState > 0,
+              label: Text('$queueState'),
+              child: const Icon(Icons.download),
+            ),
+          ),
+        ),
+        label: 'Downloads',
+      ),
       NavigationDestination(
         icon: const Icon(Icons.settings_outlined),
         selectedIcon: SpinIcon(child: const Icon(Icons.settings)),
@@ -902,7 +891,7 @@ class _MainShellState extends ConsumerState<MainShell>
               // The backdrop blur re-filters everything scrolling underneath on
               // every frame; low-end devices get an opaque base instead unless
               // the user forces blur on in appearance settings.
-              if (!ref.watch(backdropBlurEnabledProvider)) {
+              if (!ref.watch(backdropBlurEnabledProvider) || !ref.watch(themeProvider.select((t) => t.enableBlur))) {
                 return ColoredBox(
                   color: settingsGroupColor(context),
                   child: bottomBar,

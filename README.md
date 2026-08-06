@@ -1,203 +1,92 @@
-<div align="center">
+# ✨ SpotiFLAC Revamped
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/banner-readme-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="assets/readme/banner-readme-light.png">
-  <img alt="SpotiFLAC Mobile" src="assets/readme/banner-readme-light.png" width="650" height="auto">
-</picture>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/25971" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/25971" alt="spotiflacapp%2FSpotiFLAC-Mobile | Trendshift" width="250" height="55">
-  </a>
-</p>
-
-</div>
-
-<div align="center">
-
-[![GitHub Release](https://img.shields.io/github/v/release/spotiflacapp/SpotiFLAC-Mobile?style=for-the-badge&logo=github)](https://github.com/spotiflacapp/SpotiFLAC-Mobile/releases)
-[![Crowdin](https://img.shields.io/badge/HELP%20TRANSLATE%20ON-CROWDIN-%2321252b?style=for-the-badge&logo=crowdin)](https://crowdin.com/project/spotiflac-mobile)
-
-[![Telegram Channel](https://img.shields.io/badge/CHANNEL-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/spotiflac)
-[![Telegram Community](https://img.shields.io/badge/COMMUNITY-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/spotiflac_chat)
-
-</div>
-
-## Screenshots
-
-<p align="center">
-  <img src="assets/readme/1.jpg?v=2" width="200" />
-  <img src="assets/readme/2.jpg?v=2" width="200" />
-  <img src="assets/readme/3.jpg?v=2" width="200" />
-  <img src="assets/readme/4.jpg?v=2" width="200" />
-</p>
+> A revamped, improved version of [SpotiFLAC Mobile](https://github.com/SpotiFLAC/SpotiFLAC-Mobile) — with enhanced features, polished UI, and better performance.
 
 ---
 
-## Extensions
+## 🎵 What is SpotiFLAC Revamped?
 
-Extensions let the community add new music sources and features without waiting for app updates. When a streaming service API changes or a new source becomes available, extensions can be updated independently.
+SpotiFLAC Revamped is a feature-rich mobile music client that lets you search, stream previews, and download high-quality audio tracks (FLAC, MP3, M4A) from multiple music platforms — all wrapped in a beautiful Material You interface.
 
-### Installing Extensions
-
-1. Open the **Store** tab in the app
-2. On first launch, enter an **Extension Repository URL** when prompted
-3. Browse and install extensions with one tap
-4. Or download a `.spotiflac-ext` file and install manually via **Settings > Extensions**
-5. Configure extension settings if needed
-6. Set provider priority under **Settings > Extensions > Provider Priority**
-
-### Developing Extensions
-
-> [!NOTE]
-> Want to build your own extension? Start with the
-> [Extension Development Guide](docs/EXTENSION_DEVELOPMENT.md). The
-> [documentation site](https://spotiflac.zarz.moe/docs) contains the expanded
-> API reference.
+This fork builds on top of the original SpotiFLAC Mobile project with added features, bug fixes, and UI improvements.
 
 ---
 
-## Development
+## 🚀 Features
 
-SpotiFLAC Mobile combines a Flutter/Dart UI, a Go backend compiled with
-`gomobile`, and thin Android/iOS platform bridges. Toolchain versions are
-pinned in [`.fvmrc`](.fvmrc), [`go_backend/go.mod`](go_backend/go.mod), and the
-GitHub Actions workflows.
+### 🎶 Core
+- **High-Quality Downloads** — FLAC, MP3, and M4A at up to lossless quality
+- **Multi-Platform Support** — Search and download from multiple music services via the extension system
+- **Smart Download Queue** — Parallel processing with progress tracking, speed display, and retry logic
+- **Metadata Embedding** — Automatically embeds cover art, tags, lyrics, and album info into downloaded files
 
-Start with the [Contributing Guide](CONTRIBUTING.md) for the development setup,
-project boundaries, validation commands, and pull request checklist.
+### 🎤 Lyrics
+- **Apple Music-Inspired Lyrics UI** — Left-aligned, bold typography with depth-of-field blur on inactive lines
+- **Karaoke-Style Word Highlighting** — Smooth, continuous fill animation synced to audio playback
+- **Word-Synced & Line-Synced Support** — Handles both TTML and enhanced LRC formats
+
+### 📦 Downloads & Library
+- **Downloads Tab** — Dedicated bottom navigation tab showing all active/pending downloads with cover art, title, speed, and progress
+- **Download History** — Track completed, failed, and canceled downloads
+- **Library Management** — Browse and manage your downloaded music collection
+- **SAF Support** — Android Storage Access Framework for flexible download locations
+
+### 🎨 Design & UX
+- **Material You** — Dynamic color theming based on your wallpaper
+- **Frosted Glass Effects** — Translucent blur effects across the UI (toggleable)
+- **AMOLED Dark Mode** — True black theme for OLED displays
+- **Artwork Background** — Album art-based ambient background on the now-playing screen
+- **Smooth Animations** — Micro-animations on navigation icons, transitions, and lyrics
+
+### ⚙️ Advanced
+- **Extension System** — Add new music sources via installable extensions
+- **ReplayGain / R128** — Automatic volume normalization for consistent playback
+- **Backup & Restore** — Export and import your app settings and library
+- **Detailed Logging** — Debug mode for troubleshooting
 
 ---
 
-## Related Projects
+## 🛠️ Building from Source
 
-### [SpotiFLAC (Desktop)](https://github.com/afkarxyz/SpotiFLAC)
-Download music in true lossless FLAC from extension-provided sources on Windows, macOS & Linux.
+### Prerequisites
+- [Flutter](https://flutter.dev/) (stable channel)
+- [Go](https://go.dev/) with [gomobile](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile) configured
+- **Java 17** — Required for Android Gradle builds
+  ```
+  set JAVA_HOME=C:\path\to\jdk-17
+  ```
 
-### [SpotiFLAC (Python Module)](https://github.com/ShuShuzinhuu/SpotiFLAC-Module-Version)
-Python library for SpotiFLAC integration, maintained by [@ShuShuzinhuu](https://github.com/ShuShuzinhuu).
+### Build Steps
+```bash
+# Clone the repository
+git clone https://github.com/c0mrrr/spotiflac-revamped.git
+cd spotiflac-revamped
 
----
+# Get Flutter dependencies
+flutter pub get
 
-## FAQ
-
-<details>
-<summary><b>Why does the Store tab ask me to enter a URL?</b></summary>
-<br>
-
-Starting from version 3.8.0, SpotiFLAC Mobile uses a decentralized extension
-repository system. Extensions are hosted independently rather than on a
-built-in server, so anyone can create and host a compatible repository. Enter
-a repository URL in the Store tab to browse and install extensions.
-
-</details>
-
-<details>
-<summary><b>Why is my download failing with "Song not found"?</b></summary>
-<br>
-
-The track may not be available from your enabled providers. Try enabling more providers under **Settings > Extensions > Provider Priority**, or install additional download extensions from the Store.
-
-</details>
-
-<details>
-<summary><b>Why are some tracks downloading in lower quality?</b></summary>
-<br>
-
-Quality depends on what's available from the source and the installed download extension. Check each extension's quality options and service notes in the app.
-
-</details>
-
-<details>
-<summary><b>Can I download playlists?</b></summary>
-<br>
-
-Yes! Just paste the playlist URL in the search bar. The app will fetch all tracks and queue them for download.
-
-</details>
-
-<details>
-<summary><b>Why do I need to grant storage permission?</b></summary>
-<br>
-
-The app needs a writable destination for downloaded files. On Android, choose a
-folder with the system folder picker (SAF), or use the app-specific folder. If
-Android revokes a saved folder grant, select the folder again in Settings.
-
-</details>
-
-<details>
-<summary><b>Is this app safe?</b></summary>
-<br>
-
-SpotiFLAC Mobile is open source, so its code and build workflows can be
-inspected directly in this repository.
-
-</details>
-
-<details>
-<summary><b>Why is downloading not working in my country?</b></summary>
-<br>
-
-Some countries have restricted access to certain streaming service APIs. If downloads are failing, try using a VPN to connect through a different region.
-
-</details>
-
-<details>
-<summary><b>Can I add SpotiFLAC Mobile to AltStore or SideStore?</b></summary>
-<br>
-
-Yes! Add the official source to receive updates directly within the app. Copy this link:
-
-```
-https://raw.githubusercontent.com/spotiflacapp/SpotiFLAC-Mobile/refs/heads/main/apps.json
+# Build the APK
+flutter build apk --release
 ```
 
-In AltStore/SideStore, go to **Browse > Sources**, tap **+**, and paste the link.
-
-</details>
-
-> [!NOTE]
-> If SpotiFLAC Mobile is useful to you, consider supporting development:
->
-> [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/zarzet)
+> **Note:** The Go backend (`go_backend/`) is compiled via gomobile and linked through JNI. Ensure `gomobile` is properly initialized before building.
 
 ---
 
-## Contributors
+## 📸 Screenshots
 
-Thanks to everyone who has contributed to SpotiFLAC Mobile!
-
-<a href="https://github.com/spotiflacapp/SpotiFLAC-Mobile/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=spotiflacapp/SpotiFLAC-Mobile" />
-</a>
-
-We also appreciate everyone who helped with [translations on Crowdin](https://crowdin.com/project/spotiflac-mobile), reported bugs, suggested features, and spread the word.
-
-Interested in contributing? Check out the [Contributing Guide](CONTRIBUTING.md) to get started!
+*Coming soon*
 
 ---
 
-## API Credits
+## 🙏 Credits
 
-| | | | | |
-|---|---|---|---|---|
-| [MusicDL](https://www.musicdl.me) | [LRCLib](https://lrclib.net) | [Paxsenix](https://lyrics.paxsenix.org) | [Cobalt](https://cobalt.tools) | [Song.link](https://song.link) |
-| [IDHS](https://github.com/sjdonado/idonthavespotify) |  |  |  |  |
+- **Original Project** — [SpotiFLAC Mobile](https://github.com/SpotiFLAC/SpotiFLAC-Mobile) by the SpotiFLAC team
+- **Original Creator** — The original SpotiFLAC desktop application
+- **Logo** — Amonoman
 
 ---
 
-## Disclaimer
+## 📄 License
 
-This repository and its contents are provided strictly for educational and research purposes. The software is provided "as-is" without warranty of any kind, express or implied, as stated in the [MIT License](LICENSE).
-
-- No copyrighted content is hosted, stored, mirrored, or distributed by this repository.
-- Users must ensure that their use of this software is properly authorized and complies with all applicable laws, regulations, and third-party terms of service.
-- This software is provided free of charge by the maintainer. If you paid a third party for access to this software in its original form from this repository, you may have been misled or scammed. Any redistribution or commercial use by third parties must comply with the terms of the repository license. No affiliation, endorsement, or support by the maintainer is implied unless explicitly stated in writing.
-- SpotiFLAC Mobile is an independent project. It is not affiliated with, endorsed by, or connected to any other project or version on other platforms that may share a similar name. The maintainer of this repository has no control over or responsibility for third-party projects.
-- The author(s) disclaim all liability for any direct, indirect, incidental, or consequential damages arising from the use or misuse of this software. Users assume all risk associated with its use.
-- If you are a copyright holder or authorized representative and believe this repository infringes upon your rights, please contact the maintainer with sufficient detail (including relevant URLs and proof of ownership). The matter will be promptly investigated and appropriate action will be taken, which may include removal of the referenced material.
-
-> [!TIP]
-> **Star the repo** to get notified about all new releases directly from GitHub.
+This project follows the same license as the original SpotiFLAC Mobile project.
